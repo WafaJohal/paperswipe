@@ -1,21 +1,22 @@
 /* ═══════════════════════════════════════════════════════════
    PaperSwipe — app.js
    Feed-based academic paper triage tool
+   Sync: GitHub Gist as a personal cloud backend
 ═══════════════════════════════════════════════════════════ */
 
 // ── CONSTANTS ────────────────────────────────────────────
 const ARXIV_CATS = [
-  { id: 'cs.AI',        label: 'cs.AI' },
-  { id: 'cs.LG',        label: 'cs.LG' },
-  { id: 'cs.CL',        label: 'cs.CL' },
-  { id: 'cs.CV',        label: 'cs.CV' },
-  { id: 'cs.RO',        label: 'cs.RO' },
-  { id: 'cs.HC',        label: 'cs.HC' },
-  { id: 'cs.NE',        label: 'cs.NE' },
-  { id: 'cs.IR',        label: 'cs.IR' },
-  { id: 'stat.ML',      label: 'stat.ML' },
-  { id: 'eess.AS',      label: 'eess.AS' },
-  { id: 'q-bio.NC',     label: 'q-bio.NC' },
+  { id: 'cs.AI',           label: 'cs.AI' },
+  { id: 'cs.LG',           label: 'cs.LG' },
+  { id: 'cs.CL',           label: 'cs.CL' },
+  { id: 'cs.CV',           label: 'cs.CV' },
+  { id: 'cs.RO',           label: 'cs.RO' },
+  { id: 'cs.HC',           label: 'cs.HC' },
+  { id: 'cs.NE',           label: 'cs.NE' },
+  { id: 'cs.IR',           label: 'cs.IR' },
+  { id: 'stat.ML',         label: 'stat.ML' },
+  { id: 'eess.AS',         label: 'eess.AS' },
+  { id: 'q-bio.NC',        label: 'q-bio.NC' },
   { id: 'physics.data-an', label: 'phys.data' },
 ];
 
@@ -29,38 +30,200 @@ const DEFAULT_PROFILE = {
   sort:       'recent',
 };
 
-// ── STATE ────────────────────────────────────────────────
-let profile    = lsLoad('ps_profile')    || DEFAULT_PROFILE;
-let seenIds    = new Set(lsLoad('ps_seen') || []);
-let stack      = lsLoad('ps_stack')      || [];
-let lastFetch  = lsLoad('ps_lastFetch')  || null;
+const GIST_FILENAME = 'paperswipe-data.json';
 
-let allPapers  = [];   // raw fetched pool
-let papers     = [];   // filtered queue
-let idx        = 0;    // current card position
-let history    = [];   // undo stack
-let activeTier = 'all';
-let activeSrc  = 'all';
+// ── STATE ────────────────────────────────────────────────
+let profile   = lsLoad('ps_profile')   || DEFAULT_PROFILE;
+let seenIds   = new Set(lsLoad('ps_seen') || []);
+let stack     = lsLoad('ps_stack')     || [];
+let lastFetch = lsLoad('ps_lastFetch') || null;
+
+// Gist credentials — stored in localStorage per device, never in the repo
+let gistToken  = lsLoad('ps_gist_token') || '';
+let gistId     = lsLoad('ps_gist_id')    || '';
+let syncStatus = 'idle'; // idle | syncing | ok | error
+
+let allPapers   = [];
+let papers      = [];
+let idx         = 0;
+let history     = [];
+let activeTier  = 'all';
+let activeSrc   = 'all';
 let detailPaper = null;
 
-// settings form mirror
 const tagLists = { keyword: [], category: [], venue: [], author: [] };
 
 // ── INIT ─────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   renderCatGrid();
   loadProfileUI();
-  updateStackUI();
   bindSourceTabs();
   bindSettingsEnterKeys();
   bindKeyboard();
+  renderSyncUI();
+
+  // Pull remote data first if Gist is configured
+  if (gistToken && gistId) {
+    setSyncStatus('syncing', 'Syncing from Gist…');
+    await gistPull();
+  }
+
+  updateStackUI();
 
   const hasProfile = profile.keywords.length || profile.categories.length ||
                      profile.venues.length    || profile.authors.length;
   if (hasProfile) refreshFeed();
+  else showEmpty('Feed not configured', 'Set up your keywords, categories, and venues to start receiving papers.');
 });
 
-// ── FETCH ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+// GIST SYNC
+// ═══════════════════════════════════════════════════════════
+
+function gistHeaders() {
+  return {
+    'Authorization': `token ${gistToken}`,
+    'Accept': 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+  };
+}
+
+// Pull remote → merge into local. Remote stack wins, but local-only items are kept.
+async function gistPull() {
+  if (!gistToken || !gistId) return;
+  setSyncStatus('syncing', 'Pulling from Gist…');
+  try {
+    const resp = await fetch(`https://api.github.com/gists/${gistId}`, { headers: gistHeaders() });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+    const data = await resp.json();
+    const raw  = data.files?.[GIST_FILENAME]?.content;
+    if (!raw) throw new Error(`File "${GIST_FILENAME}" not found in Gist — did you create it?`);
+
+    const remote = JSON.parse(raw);
+
+    // Merge stacks: keep remote order, append any local-only items
+    const remoteIds = new Set((remote.stack || []).map(p => p.id));
+    const localOnly = stack.filter(p => !remoteIds.has(p.id));
+    stack   = [...(remote.stack || []), ...localOnly];
+
+    // Union seen sets
+    seenIds = new Set([...(remote.seen || []), ...seenIds]);
+
+    // Profile: remote wins (last device to save wins)
+    if (remote.profile) profile = remote.profile;
+
+    lsSave('ps_stack',   stack);
+    lsSave('ps_seen',    [...seenIds]);
+    lsSave('ps_profile', profile);
+
+    setSyncStatus('ok', `Synced · ${nowTime()}`);
+    updateStackUI();
+    loadProfileUI();
+  } catch (e) {
+    console.error('Gist pull failed:', e);
+    setSyncStatus('error', `Sync failed: ${e.message}`);
+  }
+}
+
+// Push local → Gist. Debounced so rapid swipes don't hammer the API.
+let pushTimer = null;
+function gistPushDebounced() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(gistPush, 3000);
+}
+
+async function gistPush() {
+  if (!gistToken || !gistId) return;
+  setSyncStatus('syncing', 'Saving to Gist…');
+  try {
+    const payload = {
+      stack,
+      seen:      [...seenIds],
+      profile,
+      updatedAt: new Date().toISOString(),
+    };
+    const resp = await fetch(`https://api.github.com/gists/${gistId}`, {
+      method: 'PATCH',
+      headers: gistHeaders(),
+      body: JSON.stringify({
+        files: { [GIST_FILENAME]: { content: JSON.stringify(payload, null, 2) } },
+      }),
+    });
+    if (!resp.ok) throw new Error(`GitHub API ${resp.status}`);
+    setSyncStatus('ok', `Saved · ${nowTime()}`);
+  } catch (e) {
+    console.error('Gist push failed:', e);
+    setSyncStatus('error', `Save failed: ${e.message}`);
+  }
+}
+
+// One-time connect: validate credentials then do first pull
+async function connectGist() {
+  const token = document.getElementById('gistTokenInput').value.trim();
+  const id    = document.getElementById('gistIdInput').value.trim();
+  if (!token || !id) { showToast('Enter both token and Gist ID'); return; }
+
+  const btn = document.getElementById('connectGistBtn');
+  btn.textContent = 'Connecting…'; btn.disabled = true;
+  try {
+    const resp = await fetch(`https://api.github.com/gists/${id}`, {
+      headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' },
+    });
+    if (!resp.ok) throw new Error(`GitHub returned ${resp.status} — check token & Gist ID`);
+
+    gistToken = token; gistId = id;
+    lsSave('ps_gist_token', gistToken);
+    lsSave('ps_gist_id',    gistId);
+
+    await gistPull();
+    renderSyncUI();
+    showToast('✓ Gist connected and synced');
+    updateStackUI();
+  } catch (e) {
+    showToast(`Connection failed: ${e.message}`);
+    setSyncStatus('error', e.message);
+  }
+  btn.textContent = 'Connect'; btn.disabled = false;
+}
+
+function disconnectGist() {
+  if (!confirm('Disconnect Gist sync? Local data is kept but changes will no longer sync.')) return;
+  gistToken = ''; gistId = '';
+  lsSave('ps_gist_token', '');
+  lsSave('ps_gist_id',    '');
+  setSyncStatus('idle', 'Not connected');
+  renderSyncUI();
+  showToast('Gist disconnected');
+}
+
+function setSyncStatus(status, msg) {
+  syncStatus = status;
+  const dot  = document.getElementById('syncDot');
+  const text = document.getElementById('syncText');
+  if (!dot || !text) return;
+  dot.className    = `sync-dot sync-${status}`;
+  text.textContent = msg;
+}
+
+function renderSyncUI() {
+  const connected = !!(gistToken && gistId);
+  document.getElementById('syncSetup')?.classList.toggle('hidden', connected);
+  document.getElementById('syncActive')?.classList.toggle('hidden', !connected);
+  if (!connected) setSyncStatus('idle', 'Not connected');
+  // Show Gist ID in active panel
+  const cg = document.getElementById('connectedGistId');
+  if (cg) cg.textContent = gistId ? gistId.slice(0, 16) + '…' : '';
+  // Pre-fill inputs on re-open
+  const ti = document.getElementById('gistTokenInput');
+  const ii = document.getElementById('gistIdInput');
+  if (ti && gistToken) ti.value = gistToken;
+  if (ii && gistId)    ii.value = gistId;
+}
+
+// ═══════════════════════════════════════════════════════════
+// FETCH (papers from arXiv / Semantic Scholar)
+// ═══════════════════════════════════════════════════════════
+
 async function refreshFeed() {
   const hasProfile = profile.keywords.length || profile.categories.length ||
                      profile.venues.length    || profile.authors.length;
@@ -73,30 +236,21 @@ async function refreshFeed() {
 
   try {
     let results = [];
-    if (profile.source === 'arxiv' || profile.source === 'both') {
-      results = results.concat(await fetchArxiv());
-    }
-    if (profile.source === 'semantic' || profile.source === 'both') {
-      results = results.concat(await fetchSemantic());
-    }
+    if (profile.source === 'arxiv' || profile.source === 'both')    results = results.concat(await fetchArxiv());
+    if (profile.source === 'semantic' || profile.source === 'both') results = results.concat(await fetchSemantic());
 
     // Deduplicate by title fingerprint
     const seen = new Map();
     results = results.filter(p => {
       const k = p.title.toLowerCase().replace(/\W/g, '').slice(0, 45);
       if (seen.has(k)) return false;
-      seen.set(k, true);
-      return true;
+      seen.set(k, true); return true;
     });
 
-    // Remove already-seen
     results = results.filter(p => !seenIds.has(p.id));
-
-    if (profile.sort === 'recent') {
-      results.sort((a, b) => (b.year || 0) - (a.year || 0));
-    }
-
+    if (profile.sort === 'recent') results.sort((a, b) => (b.year || 0) - (a.year || 0));
     results = results.slice(0, profile.limit);
+
     allPapers = results;
     applySourceFilter();
     updateSourceCounts();
@@ -105,7 +259,7 @@ async function refreshFeed() {
     lsSave('ps_lastFetch', lastFetch);
 
     if (papers.length === 0) {
-      showEmpty('Feed is empty', 'No new papers since your last visit. Try widening your keywords or categories.');
+      showEmpty('Feed is empty', 'No new papers since your last visit. Try widening keywords or categories.');
       setFeedDot('idle');
     } else {
       renderCard();
@@ -118,34 +272,23 @@ async function refreshFeed() {
     showEmpty('Fetch failed', 'Could not reach paper sources. Check your connection and retry.');
     setFeedDot('idle');
   }
-
   btn.textContent = '↻ Refresh';
 }
 
 async function fetchArxiv() {
   const parts = [];
-  if (profile.keywords.length) {
-    const kw = profile.keywords.map(k => `all:${encodeURIComponent(k)}`).join('+OR+');
-    parts.push(`(${kw})`);
-  }
-  if (profile.categories.length) {
-    const cats = profile.categories.map(c => `cat:${c}`).join('+OR+');
-    parts.push(`(${cats})`);
-  }
-  if (profile.authors.length) {
-    const aus = profile.authors.map(a => `au:${encodeURIComponent(a)}`).join('+OR+');
-    parts.push(`(${aus})`);
-  }
+  if (profile.keywords.length)
+    parts.push(`(${profile.keywords.map(k => `all:${encodeURIComponent(k)}`).join('+OR+')})`);
+  if (profile.categories.length)
+    parts.push(`(${profile.categories.map(c => `cat:${c}`).join('+OR+')})`);
+  if (profile.authors.length)
+    parts.push(`(${profile.authors.map(a => `au:${encodeURIComponent(a)}`).join('+OR+')})`);
   if (!parts.length) return [];
 
-  const q    = parts.join('+OR+');
   const sort = profile.sort === 'recent' ? 'submittedDate' : 'relevance';
-  const url  = `https://export.arxiv.org/api/query?search_query=${q}&sortBy=${sort}&sortOrder=descending&start=0&max_results=${Math.min(profile.limit, 100)}`;
-
+  const url  = `https://export.arxiv.org/api/query?search_query=${parts.join('+OR+')}&sortBy=${sort}&sortOrder=descending&start=0&max_results=${Math.min(profile.limit, 100)}`;
   try {
-    const resp = await fetch(url);
-    const text = await resp.text();
-    return parseArxivXML(text);
+    return parseArxivXML(await (await fetch(url)).text());
   } catch (e) { console.warn('arXiv fetch failed', e); return []; }
 }
 
@@ -159,8 +302,9 @@ function parseArxivXML(xml) {
     const authors   = [...e.querySelectorAll('author name')].map(n => n.textContent.trim());
     const cats      = [...e.querySelectorAll('category')].map(c => c.getAttribute('term')).slice(0, 4);
     const year      = published ? new Date(published).getFullYear() : null;
-    const matchedBy = whyMatched({ title, abstract, authors, categories: cats, venue: cats[0] || '' });
-    return { id, title, abstract, published, year, authors, categories: cats, venue: cats[0] || '', url: id, source: 'arxiv', citeCount: null, doi: '', matchedBy };
+    return { id, title, abstract, published, year, authors, categories: cats,
+             venue: cats[0] || '', url: id, source: 'arxiv', citeCount: null, doi: '',
+             matchedBy: whyMatched({ title, abstract, authors, categories: cats, venue: cats[0] || '' }) };
   }).filter(p => p.title && p.abstract);
 }
 
@@ -169,57 +313,41 @@ async function fetchSemantic() {
   const queries = [...profile.keywords.slice(0, 3), ...(profile.authors.length ? [profile.authors[0]] : [])];
   const fields  = 'title,abstract,authors,year,venue,externalIds,citationCount,openAccessPdf,publicationDate';
   let all = [];
-
   for (const q of queries) {
     try {
-      const url  = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=20&fields=${fields}`;
-      const resp = await fetch(url);
+      const resp = await fetch(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=20&fields=${fields}`);
       if (!resp.ok) continue;
       const data = await resp.json();
-      const mapped = (data.data || []).map(p => {
+      all = all.concat((data.data || []).map(p => {
         const doi     = p.externalIds?.DOI || '';
         const arxivId = p.externalIds?.ArXiv || '';
-        const pdfUrl  = p.openAccessPdf?.url
-                      || (arxivId ? `https://arxiv.org/abs/${arxivId}` : '')
-                      || (doi    ? `https://doi.org/${doi}` : '');
-        const authors   = (p.authors || []).map(a => a.name);
-        const matchedBy = whyMatched({ title: p.title || '', abstract: p.abstract || '', authors, categories: [], venue: p.venue || '' });
-        return {
-          id: p.paperId || '',
-          title: p.title || '',
-          abstract: p.abstract || '',
-          published: p.publicationDate || (p.year ? `${p.year}-01-01` : ''),
-          year: p.year || null,
-          authors,
-          categories: [],
-          venue: p.venue || '',
-          url: pdfUrl || `https://www.semanticscholar.org/paper/${p.paperId}`,
-          doi, source: 'semantic', citeCount: p.citationCount || null, matchedBy,
-        };
-      }).filter(p => p.title && p.abstract);
-      all = all.concat(mapped);
+        const pdfUrl  = p.openAccessPdf?.url || (arxivId ? `https://arxiv.org/abs/${arxivId}` : '') || (doi ? `https://doi.org/${doi}` : '');
+        const authors = (p.authors || []).map(a => a.name);
+        return { id: p.paperId || '', title: p.title || '', abstract: p.abstract || '',
+                 published: p.publicationDate || (p.year ? `${p.year}-01-01` : ''),
+                 year: p.year || null, authors, categories: [], venue: p.venue || '',
+                 url: pdfUrl || `https://www.semanticscholar.org/paper/${p.paperId}`,
+                 doi, source: 'semantic', citeCount: p.citationCount || null,
+                 matchedBy: whyMatched({ title: p.title || '', abstract: p.abstract || '', authors, categories: [], venue: p.venue || '' }) };
+      }).filter(p => p.title && p.abstract));
     } catch (e) { console.warn('S2 query failed', e); }
   }
   return all;
 }
 
 function whyMatched(p) {
-  for (const kw of profile.keywords) {
+  for (const kw of profile.keywords)
     if ((p.title + ' ' + p.abstract).toLowerCase().includes(kw.toLowerCase()))
       return { type: 'keyword', value: kw };
-  }
-  for (const cat of profile.categories) {
+  for (const cat of profile.categories)
     if ((p.categories || []).some(c => c.toLowerCase().includes(cat.toLowerCase())))
       return { type: 'category', value: cat };
-  }
-  for (const v of profile.venues) {
+  for (const v of profile.venues)
     if ((p.venue || '').toLowerCase().includes(v.toLowerCase()))
       return { type: 'venue', value: v };
-  }
-  for (const au of profile.authors) {
+  for (const au of profile.authors)
     if ((p.authors || []).some(a => a.toLowerCase().includes(au.toLowerCase())))
       return { type: 'author', value: au };
-  }
   return null;
 }
 
@@ -242,8 +370,8 @@ function bindSourceTabs() {
 }
 
 function updateSourceCounts() {
-  document.getElementById('cntAll').textContent     = allPapers.length;
-  document.getElementById('cntArxiv').textContent   = allPapers.filter(p => p.source === 'arxiv').length;
+  document.getElementById('cntAll').textContent      = allPapers.length;
+  document.getElementById('cntArxiv').textContent    = allPapers.filter(p => p.source === 'arxiv').length;
   document.getElementById('cntSemantic').textContent = allPapers.filter(p => p.source === 'semantic').length;
 }
 
@@ -292,17 +420,15 @@ function renderCard() {
 }
 
 function buildCard(p) {
-  const srcCls  = p.source === 'arxiv' ? 'bs-arxiv' : 'bs-semantic';
-  const srcLbl  = p.source === 'arxiv' ? 'arXiv' : 'S2';
-  const yearTag = p.year  ? `<span class="badge-src bs-year">${p.year}</span>` : '';
-  const venueTag = p.venue ? `<span class="badge-src bs-venue">${esc(p.venue.slice(0, 30))}</span>` : '';
+  const srcCls   = p.source === 'arxiv' ? 'bs-arxiv' : 'bs-semantic';
+  const srcLbl   = p.source === 'arxiv' ? 'arXiv' : 'S2';
+  const yearTag  = p.year    ? `<span class="badge-src bs-year">${p.year}</span>` : '';
+  const venueTag = p.venue   ? `<span class="badge-src bs-venue">${esc(p.venue.slice(0, 30))}</span>` : '';
   const catTags  = p.categories.slice(0, 2).map(c => `<span class="badge-src bs-cat">${esc(c)}</span>`).join('');
-  const newTag   = isNew(p) ? `<span class="badge-src bs-new">new</span>` : '';
+  const newTag   = isNew(p)  ? `<span class="badge-src bs-new">new</span>` : '';
+  const citeTag  = p.citeCount ? `<span class="badge-src bs-venue">${p.citeCount} cited</span>` : '';
   const authLine = p.authors.slice(0, 4).join(', ') + (p.authors.length > 4 ? ' et al.' : '');
-  const matchTag = p.matchedBy
-    ? `<span class="card-match">via ${esc(p.matchedBy.value)}</span>`
-    : '';
-  const citeTag  = p.citeCount ? `<span class="badge-src bs-venue">${p.citeCount} citations</span>` : '';
+  const matchTag = p.matchedBy ? `<span class="card-match">via ${esc(p.matchedBy.value)}</span>` : '';
 
   const card = document.createElement('div');
   card.className = 'paper-card';
@@ -315,13 +441,12 @@ function buildCard(p) {
     </div>
     <h3 class="card-title">${esc(p.title)}</h3>
     <p class="card-authors">${esc(authLine)}</p>
-    <div class="card-abstract collapsed" id="cabstract">${esc(p.abstract)}</div>
+    <div class="card-abstract collapsed">${esc(p.abstract)}</div>
     <button class="expand-hint" onclick="toggleAbs(this)">▾ expand abstract</button>
     <div class="card-footer">
       ${matchTag}
       <a class="card-link" href="${esc(p.url)}" target="_blank" onclick="event.stopPropagation()">open ↗</a>
-    </div>
-  `;
+    </div>`;
   return card;
 }
 
@@ -332,13 +457,9 @@ function isNew(p) {
 
 function toggleAbs(btn) {
   const ab = btn.previousElementSibling;
-  if (ab.classList.contains('collapsed')) {
-    ab.classList.replace('collapsed', 'expanded');
-    btn.textContent = '▴ collapse';
-  } else {
-    ab.classList.replace('expanded', 'collapsed');
-    btn.textContent = '▾ expand abstract';
-  }
+  ab.classList.contains('collapsed')
+    ? (ab.classList.replace('collapsed', 'expanded'), btn.textContent = '▴ collapse')
+    : (ab.classList.replace('expanded', 'collapsed'), btn.textContent = '▾ expand abstract');
 }
 
 function updateProgress() {
@@ -349,8 +470,7 @@ function updateProgress() {
 
 function updateInfoBar() {
   if (!papers.length) return;
-  const bar = document.getElementById('infoBar');
-  bar.classList.remove('hidden');
+  document.getElementById('infoBar').classList.remove('hidden');
   const when = lastFetch
     ? new Date(lastFetch).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
     : 'now';
@@ -358,9 +478,7 @@ function updateInfoBar() {
 }
 
 function showActRow(show) {
-  ['actRow', 'progressRow'].forEach(id => {
-    document.getElementById(id).classList.toggle('hidden', !show);
-  });
+  ['actRow', 'progressRow'].forEach(id => document.getElementById(id).classList.toggle('hidden', !show));
 }
 
 function setFeedDot(state) {
@@ -394,9 +512,9 @@ function dragStart(e) {
 
 function dragMove(e) {
   if (!drag.on || !drag.el) return;
-  const pt  = e.touches ? e.touches[0] : e;
-  drag.dx   = pt.clientX - drag.startX;
-  const dy  = (pt.clientY - drag.startY) * 0.22;
+  const pt = e.touches ? e.touches[0] : e;
+  drag.dx  = pt.clientX - drag.startX;
+  const dy = (pt.clientY - drag.startY) * 0.22;
   drag.el.style.transform = `translate(${drag.dx}px, ${dy}px) rotate(${drag.dx * 0.052}deg)`;
   const r = Math.min(Math.abs(drag.dx) / 100, 1);
   drag.el.querySelector('.ol-save').style.opacity = drag.dx > 0 ? r : 0;
@@ -411,7 +529,7 @@ function dragEnd() {
   document.removeEventListener('touchmove', dragMove);
   document.removeEventListener('touchend',  dragEnd);
 
-  if      (drag.dx > 80)  animSave(drag.el, 'must');
+  if      (drag.dx >  80) animSave(drag.el, 'must');
   else if (drag.dx < -80) animSkip(drag.el);
   else {
     drag.el.style.transition = 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)';
@@ -428,6 +546,7 @@ function animSave(card, tier) {
   card.classList.add('go-right');
   setTimeout(() => { commitSave(tier); renderCard(); }, 320);
 }
+
 function animSkip(card) {
   card = card || document.querySelector('.paper-card'); if (!card) return;
   card.classList.add('go-left');
@@ -480,8 +599,8 @@ function openDetail() {
 
 function populateDetailModal(p) {
   const sc = p.source === 'arxiv' ? 'bs-arxiv' : 'bs-semantic';
-  const sl = p.source === 'arxiv' ? 'arXiv'    : 'Semantic Scholar';
-  document.getElementById('mSrc').innerHTML = `<span class="badge-src ${sc}">${sl}</span>${p.venue ? ` <span class="badge-src bs-venue">${esc(p.venue)}</span>` : ''}`;
+  const sl = p.source === 'arxiv' ? 'arXiv' : 'Semantic Scholar';
+  document.getElementById('mSrc').innerHTML     = `<span class="badge-src ${sc}">${sl}</span>${p.venue ? ` <span class="badge-src bs-venue">${esc(p.venue)}</span>` : ''}`;
   document.getElementById('mTitle').textContent    = p.title;
   document.getElementById('mAuthors').textContent  = p.authors.join(', ');
   document.getElementById('mAbstract').textContent = p.abstract;
@@ -495,22 +614,26 @@ function skipFromModal()     { commitSkip();     closeOverlay('detailOverlay'); 
 function copyBibtex() {
   if (!detailPaper) return;
   navigator.clipboard?.writeText(makeBibtex(detailPaper))
-    .then(()  => showToast('BibTeX copied'))
-    .catch(()  => showToast('Copy failed'));
+    .then(() => showToast('BibTeX copied'))
+    .catch(() => showToast('Copy failed'));
 }
 
 // ── STACK UI ─────────────────────────────────────────────
 function setTier(tier, el) {
   activeTier = tier;
-  el.closest('.tier-row').querySelectorAll('.tier-tab').forEach(t => t.classList.toggle('active', t.dataset.tier === tier));
+  el.closest('.tier-row').querySelectorAll('.tier-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tier === tier)
+  );
   renderStackItems(document.getElementById('slist'));
 }
 
 function setTierModal(tier, el) {
-  el.closest('.tier-row').querySelectorAll('.tier-tab').forEach(t => t.classList.toggle('active', t.dataset.tier === tier));
-  const tmp = activeTier; activeTier = tier;
+  el.closest('.tier-row').querySelectorAll('.tier-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.tier === tier)
+  );
+  const prev = activeTier; activeTier = tier;
   renderStackItems(document.getElementById('mStackList'));
-  activeTier = tmp; // restore for sidebar
+  activeTier = prev;
 }
 
 function updateStackUI() {
@@ -532,22 +655,20 @@ function renderStackItems(container) {
   container.innerHTML = items.map(p => {
     const i  = stack.indexOf(p);
     const sc = p.source === 'arxiv' ? 'bs-arxiv' : 'bs-semantic';
-    const tierIcon = p.tier === 'must' ? '♥' : '☆';
-    const tierColor = p.tier === 'must' ? 'var(--chri-sage)' : 'var(--muted)';
+    const tc = p.tier === 'must' ? 'var(--chri-sage)' : 'var(--muted)';
     return `
     <div class="sitem" onclick="openSaved(${i})">
       <div class="sitem-body">
         <div class="sitem-title">${esc(p.title)}</div>
         <div class="sitem-meta">
           <span class="badge-src ${sc}" style="font-size:0.62rem;padding:2px 6px">${p.source === 'arxiv' ? 'arXiv' : 'S2'}</span>
-          ${p.year || ''}
-          ${p.venue ? '· ' + esc(p.venue.slice(0, 20)) : ''}
-          · <span style="color:${tierColor}">${tierIcon}</span>
+          ${p.year || ''} ${p.venue ? '· ' + esc(p.venue.slice(0, 20)) : ''}
+          · <span style="color:${tc}">${p.tier === 'must' ? '♥' : '☆'}</span>
         </div>
       </div>
       <div class="sitem-acts">
-        <button class="ibtn" onclick="event.stopPropagation(); toggleTier(${i})" title="Toggle tier">⇅</button>
-        <button class="ibtn del" onclick="event.stopPropagation(); removeStack(${i})" title="Remove">✕</button>
+        <button class="ibtn" onclick="event.stopPropagation();toggleTier(${i})" title="Toggle tier">⇅</button>
+        <button class="ibtn del" onclick="event.stopPropagation();removeStack(${i})" title="Remove">✕</button>
       </div>
     </div>`;
   }).join('');
@@ -575,20 +696,23 @@ function openStack() {
   document.getElementById('mtcAll').textContent   = stack.length;
   document.getElementById('mtcMust').textContent  = stack.filter(p => p.tier === 'must').length;
   document.getElementById('mtcMaybe').textContent = stack.filter(p => p.tier === 'maybe').length;
-  const tmp = activeTier; activeTier = 'all';
+  const prev = activeTier; activeTier = 'all';
   renderStackItems(document.getElementById('mStackList'));
-  activeTier = tmp;
+  activeTier = prev;
   document.getElementById('stackOverlay').classList.remove('hidden');
 }
 
 // ── SETTINGS ─────────────────────────────────────────────
 function openSettings() {
   loadProfileUI();
+  renderSyncUI();
   document.getElementById('settingsOverlay').classList.remove('hidden');
 }
+
 function closeSettings() {
   document.getElementById('settingsOverlay').classList.add('hidden');
 }
+
 function settingsClickOut(e) {
   if (e.target === document.getElementById('settingsOverlay')) closeSettings();
 }
@@ -616,9 +740,9 @@ function renderAllTags() {
 
 function addTag(type) {
   const inputMap = { keyword: 'kwInput', category: 'catInput', venue: 'venueInput', author: 'authorInput' };
-  const inp  = document.getElementById(inputMap[type]);
-  const vals = inp.value.split(',').map(v => v.trim()).filter(Boolean);
-  vals.forEach(v => { if (!tagLists[type].includes(v)) tagLists[type].push(v); });
+  const inp = document.getElementById(inputMap[type]);
+  inp.value.split(',').map(v => v.trim()).filter(Boolean)
+    .forEach(v => { if (!tagLists[type].includes(v)) tagLists[type].push(v); });
   inp.value = '';
   renderAllTags();
   if (type === 'category') updateCatGrid();
@@ -644,8 +768,7 @@ function updateCatGrid() {
 
 function toggleCat(id, el) {
   const i = tagLists.category.indexOf(id);
-  if (i >= 0) tagLists.category.splice(i, 1);
-  else tagLists.category.push(id);
+  i >= 0 ? tagLists.category.splice(i, 1) : tagLists.category.push(id);
   el.classList.toggle('on');
   renderAllTags();
 }
@@ -662,6 +785,7 @@ function saveAndRefresh() {
   };
   lsSave('ps_profile', profile);
   closeSettings();
+  gistPushDebounced(); // sync updated profile
   refreshFeed();
 }
 
@@ -669,6 +793,7 @@ function clearSeen() {
   if (!confirm('Clear all seen-paper history? Previously swiped papers may reappear.')) return;
   seenIds = new Set();
   lsSave('ps_seen', []);
+  gistPushDebounced();
   showToast('Seen history cleared');
 }
 
@@ -679,11 +804,7 @@ function clearStack() {
 }
 
 function bindSettingsEnterKeys() {
-  const pairs = [
-    ['kwInput', 'keyword'], ['catInput', 'category'],
-    ['venueInput', 'venue'], ['authorInput', 'author'],
-  ];
-  pairs.forEach(([id, type]) => {
+  [['kwInput','keyword'],['catInput','category'],['venueInput','venue'],['authorInput','author']].forEach(([id, type]) => {
     document.getElementById(id).addEventListener('keydown', e => {
       if (e.key === 'Enter') { e.preventDefault(); addTag(type); }
     });
@@ -692,22 +813,19 @@ function bindSettingsEnterKeys() {
 
 // ── BIBTEX ───────────────────────────────────────────────
 function makeBibtex(p) {
-  const lastName = p.authors[0]?.split(' ').pop() || 'Author';
-  const word0    = p.title.split(' ')[0] || 'Paper';
-  const key      = (lastName + (p.year || '') + word0).replace(/[^a-zA-Z0-9]/g, '');
-  const type     = p.venue ? 'inproceedings' : 'misc';
-  const lines = [
+  const key  = ((p.authors[0]?.split(' ').pop() || 'Author') + (p.year || '') + (p.title.split(' ')[0] || 'Paper')).replace(/[^a-zA-Z0-9]/g, '');
+  const type = p.venue ? 'inproceedings' : 'misc';
+  return [
     `@${type}{${key},`,
     `  title     = {${p.title}},`,
     `  author    = {${p.authors.join(' and ')}},`,
-    p.year   ? `  year      = {${p.year}},`       : '',
-    p.venue  ? `  booktitle = {${p.venue}},`       : '',
-    p.doi    ? `  doi       = {${p.doi}},`         : '',
+    p.year  ? `  year      = {${p.year}},`       : '',
+    p.venue ? `  booktitle = {${p.venue}},`       : '',
+    p.doi   ? `  doi       = {${p.doi}},`         : '',
     `  url       = {${p.url}},`,
     `  abstract  = {${p.abstract.slice(0, 300)}...},`,
     `}`,
-  ].filter(Boolean);
-  return lines.join('\n');
+  ].filter(Boolean).join('\n');
 }
 
 function exportBibtex() {
@@ -728,18 +846,10 @@ function bindKeyboard() {
     const tag = document.activeElement.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
-    const anyModal = ['detailOverlay', 'stackOverlay']
-      .some(id => !document.getElementById(id).classList.contains('hidden'));
-    if (anyModal) {
-      if (e.key === 'Escape') {
-        closeOverlay('detailOverlay');
-        closeOverlay('stackOverlay');
-      }
-      return;
-    }
+    const anyModal = ['detailOverlay','stackOverlay'].some(id => !document.getElementById(id).classList.contains('hidden'));
+    if (anyModal) { if (e.key === 'Escape') { closeOverlay('detailOverlay'); closeOverlay('stackOverlay'); } return; }
     if (!document.getElementById('settingsOverlay').classList.contains('hidden')) {
-      if (e.key === 'Escape') closeSettings();
-      return;
+      if (e.key === 'Escape') closeSettings(); return;
     }
 
     if (e.key === 'ArrowLeft'  || e.key === 'a' || e.key === 'A') doSkip();
@@ -748,6 +858,7 @@ function bindKeyboard() {
     if (e.key === ' ')  { e.preventDefault(); openDetail(); }
     if (e.key === 'u'  || e.key === 'U') undoLast();
     if (e.key === 'r'  || e.key === 'R') refreshFeed();
+    if (e.key === 's'  || e.key === 'S') { e.preventDefault(); gistPush(); showToast('Saving to Gist…'); }
   });
 }
 
@@ -756,44 +867,38 @@ function closeOverlay(id) {
   document.getElementById(id).classList.add('hidden');
 }
 
+// ── PERSIST ──────────────────────────────────────────────
+// Writes to localStorage immediately. Debounce-pushes to Gist.
+function persist() {
+  lsSave('ps_seen',  [...seenIds]);
+  lsSave('ps_stack', stack);
+  gistPushDebounced();
+}
+
 // ── UTILS ────────────────────────────────────────────────
 function showToast(msg) {
   const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('up');
+  t.textContent = msg; t.classList.add('up');
   setTimeout(() => t.classList.remove('up'), 2300);
 }
 
+function nowTime() {
+  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
 function esc(s = '') {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 function mkEl(tag, cls) {
-  const el = document.createElement(tag);
-  el.className = cls;
-  return el;
+  const el = document.createElement(tag); el.className = cls; return el;
 }
 
 function download(name, content, type) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([content], { type }));
-  a.download = name;
-  a.click();
+  a.download = name; a.click();
 }
 
-function persist() {
-  lsSave('ps_seen',  [...seenIds]);
-  lsSave('ps_stack', stack);
-}
-
-function lsSave(k, v) {
-  try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* quota */ }
-}
-
-function lsLoad(k) {
-  try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; }
-}
+function lsSave(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function lsLoad(k)    { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }

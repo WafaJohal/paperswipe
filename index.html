@@ -187,6 +187,51 @@
 
     <button class="button button-primary" onclick="saveAndRefresh()">Save &amp; Refresh Feed</button>
 
+    <!-- ── SYNC SECTION ── -->
+    <div class="setting-section">
+      <p class="panel-label">Gist Sync</p>
+
+      <!-- Sync status indicator -->
+      <div class="sync-status-row">
+        <div class="sync-dot sync-idle" id="syncDot"></div>
+        <span class="sync-text" id="syncText">Not connected</span>
+        <button class="lnk" onclick="gistPull()" id="syncPullBtn" title="Pull latest from Gist">↓ pull</button>
+      </div>
+
+      <!-- Setup form (shown when not connected) -->
+      <div id="syncSetup">
+        <p class="hint" style="margin-bottom:10px">
+          Connect a private GitHub Gist to sync your stack and seen history across all devices.
+          <a href="https://gist.github.com" target="_blank" class="lnk">Create a Gist ↗</a> with a file named
+          <code>paperswipe-data.json</code> containing <code>{"stack":[],"seen":[]}</code>, then
+          <a href="https://github.com/settings/tokens" target="_blank" class="lnk">create a token ↗</a>
+          with <strong>gist</strong> scope only.
+        </p>
+        <div class="sync-fields">
+          <div class="tag-input-wrap">
+            <input id="gistTokenInput" type="password" placeholder="GitHub Personal Access Token (ghp_…)" autocomplete="off">
+          </div>
+          <div class="tag-input-wrap">
+            <input id="gistIdInput" type="text" placeholder="Gist ID  (the hash in the URL)" autocomplete="off">
+            <button class="button button-sm button-read" id="connectGistBtn" onclick="connectGist()">Connect</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active state (shown when connected) -->
+      <div id="syncActive" class="hidden">
+        <p class="hint" style="margin-bottom:10px">
+          Gist ID: <code id="connectedGistId"></code><br>
+          Your stack, seen history, and feed profile sync automatically after each swipe.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="button button-sm button-read" onclick="gistPull()">↓ Pull now</button>
+          <button class="button button-sm button-secondary" onclick="gistPush()">↑ Push now</button>
+          <button class="button button-sm button-ghost" onclick="disconnectGist()">Disconnect</button>
+        </div>
+      </div>
+    </div>
+
     <div class="danger-zone">
       <p class="panel-label">Danger Zone</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">

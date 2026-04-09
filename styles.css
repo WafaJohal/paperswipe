@@ -512,6 +512,30 @@ kbd {
 
 .danger-zone { border-top: 1px solid rgba(27,42,74,0.1); padding-top: 18px; }
 
+/* ── SYNC UI ── */
+.sync-status-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px; border-radius: 10px;
+  background: rgba(27,42,74,0.04); border: 1px solid rgba(27,42,74,0.08);
+  margin-bottom: 12px;
+}
+.sync-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  transition: background 0.3s, box-shadow 0.3s;
+}
+.sync-idle    { background: rgba(27,42,74,0.2); }
+.sync-syncing { background: var(--chri-blue); box-shadow: 0 0 6px var(--chri-blue); animation: pulse 1.2s ease-in-out infinite; }
+.sync-ok      { background: var(--chri-sage);  box-shadow: 0 0 5px var(--chri-sage); }
+.sync-error   { background: var(--negative);   box-shadow: 0 0 5px var(--negative); }
+.sync-text { flex: 1; font-size: 0.78rem; color: var(--muted); font-family: 'Karla', Arial, sans-serif; }
+.sync-fields { display: flex; flex-direction: column; gap: 8px; }
+.sync-fields input { font-family: 'Courier New', monospace; font-size: 0.78rem; }
+code {
+  font-family: 'Courier New', monospace; font-size: 0.78rem;
+  background: rgba(27,42,74,0.06); padding: 1px 5px; border-radius: 4px;
+  color: var(--chri-deep-navy);
+}
+
 /* ═══════════════════════════════════════════════
    MODALS
 ═══════════════════════════════════════════════ */
