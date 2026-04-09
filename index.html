@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PaperSwipe</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ── HEADER ─────────────────────────────────────── -->
+<header class="app-header">
+  <div class="header-inner">
+    <div class="logo-block">
+      <span class="logo-title">PaperSwipe</span>
+      <span class="logo-sub">research feed</span>
+    </div>
+    <div class="header-center">
+      <div class="feed-dot idle" id="feedDot"></div>
+      <span class="feed-status" id="feedStatus">Configure your feed to get started</span>
+    </div>
+    <div class="header-actions">
+      <button class="hbtn" id="stackBtn" onclick="openStack()">
+        Reading Stack <span class="count-badge" id="hBadge">0</span>
+      </button>
+      <button class="hbtn hbtn-outline" id="refreshBtn" onclick="refreshFeed()">↻ Refresh</button>
+      <button class="hbtn hbtn-icon" onclick="openSettings()" title="Feed settings" aria-label="Settings">⚙</button>
+    </div>
+  </div>
+</header>
+
+<!-- ── MAIN LAYOUT ────────────────────────────────── -->
+<main class="app-shell">
+  <div class="content-grid">
+
+    <!-- SWIPE ZONE -->
+    <section class="deck-panel glass">
+      <div class="panel-header">
+        <div>
+          <p class="panel-label">Your Feed</p>
+          <h2 class="panel-title" id="panelTitle">Papers</h2>
+        </div>
+        <div class="feed-info-bar hidden" id="infoBar">
+          <span class="info-text" id="infoText"></span>
+          <button class="lnk" onclick="refreshFeed()">↻ refresh</button>
+        </div>
+      </div>
+
+      <!-- SOURCE TABS -->
+      <div class="src-tabs" id="srcTabs">
+        <button class="src-tab active" data-src="all">All <span class="tc" id="cntAll">0</span></button>
+        <button class="src-tab" data-src="arxiv">arXiv <span class="tc" id="cntArxiv">0</span></button>
+        <button class="src-tab" data-src="semantic">Semantic Scholar <span class="tc" id="cntSemantic">0</span></button>
+      </div>
+
+      <!-- CARD STAGE -->
+      <div class="deck-stage" id="stage">
+        <div class="empty-state" id="emptyMsg">
+          <div class="empty-icon">📡</div>
+          <h3>Feed not configured</h3>
+          <p>Set up your keywords, categories, and venues to start receiving papers.</p>
+          <button class="button button-primary" onclick="openSettings()">⚙ Open Settings</button>
+        </div>
+      </div>
+
+      <!-- CONTROLS -->
+      <div class="controls hidden" id="actRow">
+        <button class="button button-sm button-ghost-neutral" onclick="undoLast()" title="Undo (U)">↩ Undo</button>
+        <button class="button button-secondary" onclick="doSkip()"  title="Skip ← A">✕ Skip</button>
+        <button class="button button-primary"   onclick="doMust()"  title="Must-read → D">♥ Must-read</button>
+        <button class="button button-read"      onclick="doMaybe()" title="Maybe M">☆ Maybe</button>
+        <button class="button button-sm button-ghost-neutral" onclick="openDetail()" title="Details Space">⋯</button>
+      </div>
+
+      <!-- PROGRESS -->
+      <div class="progress-row hidden" id="progressRow">
+        <div class="pbar"><div class="pfill" id="pFill" style="width:0%"></div></div>
+        <span class="progress-text" id="pText">0 / 0</span>
+        <div class="kbd-row">
+          <span><kbd>←</kbd> skip</span>
+          <span><kbd>→</kbd> must</span>
+          <span><kbd>M</kbd> maybe</span>
+          <span><kbd>Space</kbd> detail</span>
+          <span><kbd>U</kbd> undo</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- STACK SIDEBAR -->
+    <aside class="sidebar">
+      <div class="list-panel glass">
+        <div class="panel-header">
+          <div>
+            <p class="panel-label">Reading Stack</p>
+            <h2 class="panel-title">Saved</h2>
+          </div>
+          <div class="export-actions">
+            <button class="lnk" onclick="exportBibtex()">BibTeX ↓</button>
+            <button class="lnk" onclick="exportJson()">JSON ↓</button>
+          </div>
+        </div>
+
+        <div class="tier-row">
+          <button class="tier-tab active" data-tier="all"   onclick="setTier('all',this)">All <span class="tc" id="tcAll">0</span></button>
+          <button class="tier-tab"        data-tier="must"  onclick="setTier('must',this)">♥ Must <span class="tc" id="tcMust">0</span></button>
+          <button class="tier-tab"        data-tier="maybe" onclick="setTier('maybe',this)">☆ Maybe <span class="tc" id="tcMaybe">0</span></button>
+        </div>
+
+        <div class="list" id="slist">
+          <div class="stack-empty">Swipe ♥ for must-reads,<br>☆ for maybes.</div>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</main>
+
+<!-- ── SETTINGS DRAWER ────────────────────────────── -->
+<div class="settings-overlay hidden" id="settingsOverlay" onclick="settingsClickOut(event)">
+  <div class="settings-drawer glass">
+    <div class="drawer-head">
+      <h2 class="drawer-title">Feed Profile</h2>
+      <button class="close-btn" onclick="closeSettings()">✕</button>
+    </div>
+
+    <div class="setting-section">
+      <p class="panel-label">Keywords</p>
+      <div class="tag-input-wrap">
+        <input id="kwInput" type="text" placeholder="e.g. robot learning, affective computing, LLM">
+        <button class="button button-sm button-secondary" onclick="addTag('keyword')">+ Add</button>
+      </div>
+      <div class="tags" id="kwTags"></div>
+      <p class="hint">Papers matching any keyword will surface in your feed. Separate multiple with commas.</p>
+    </div>
+
+    <div class="setting-section">
+      <p class="panel-label">arXiv Categories</p>
+      <div class="cat-grid" id="catGrid"></div>
+      <div class="tag-input-wrap" style="margin-top:10px">
+        <input id="catInput" type="text" placeholder="custom, e.g. eess.AS">
+        <button class="button button-sm button-secondary" onclick="addTag('category')">+ Add</button>
+      </div>
+      <div class="tags" id="catTags"></div>
+    </div>
+
+    <div class="setting-section">
+      <p class="panel-label">Venues &amp; Conferences</p>
+      <div class="tag-input-wrap">
+        <input id="venueInput" type="text" placeholder="e.g. CHI, NeurIPS, ICRA, ToCHI, HRI">
+        <button class="button button-sm button-secondary" onclick="addTag('venue')">+ Add</button>
+      </div>
+      <div class="tags" id="venueTags"></div>
+    </div>
+
+    <div class="setting-section">
+      <p class="panel-label">Authors to Follow</p>
+      <div class="tag-input-wrap">
+        <input id="authorInput" type="text" placeholder="e.g. Yoshua Bengio, Fei-Fei Li">
+        <button class="button button-sm button-secondary" onclick="addTag('author')">+ Add</button>
+      </div>
+      <div class="tags" id="authorTags"></div>
+      <p class="hint">Papers by these authors will always appear in your feed.</p>
+    </div>
+
+    <div class="setting-section">
+      <p class="panel-label">Feed Settings</p>
+      <div class="setting-row">
+        <label>Papers per refresh</label>
+        <input type="number" id="limitInput" value="40" min="10" max="100" step="10">
+      </div>
+      <div class="setting-row">
+        <label>Sources</label>
+        <select id="sourceInput">
+          <option value="both" selected>arXiv + Semantic Scholar</option>
+          <option value="arxiv">arXiv only</option>
+          <option value="semantic">Semantic Scholar only</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>Sort by</label>
+        <select id="sortInput">
+          <option value="recent" selected>Newest first</option>
+          <option value="relevance">Relevance</option>
+        </select>
+      </div>
+    </div>
+
+    <button class="button button-primary" onclick="saveAndRefresh()">Save &amp; Refresh Feed</button>
+
+    <div class="danger-zone">
+      <p class="panel-label">Danger Zone</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="button button-ghost" onclick="clearSeen()">Clear seen history</button>
+        <button class="button button-ghost" onclick="clearStack()">Clear reading stack</button>
+      </div>
+      <p class="hint">Clearing seen history will re-surface previously swiped papers.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── DETAIL MODAL ───────────────────────────────── -->
+<div class="overlay hidden" id="detailOverlay" onclick="if(event.target===this)closeOverlay('detailOverlay')">
+  <div class="modal glass">
+    <button class="close-btn modal-close" onclick="closeOverlay('detailOverlay')">✕</button>
+    <div class="m-src" id="mSrc"></div>
+    <h3 class="m-title" id="mTitle"></h3>
+    <p class="m-authors" id="mAuthors"></p>
+    <p class="m-abstract" id="mAbstract"></p>
+    <details class="bibtex-details">
+      <summary>BibTeX</summary>
+      <div class="bibtex-block" id="mBibtex"></div>
+    </details>
+    <div class="modal-btns">
+      <button class="button button-primary"   onclick="saveFromModal('must')">♥ Must-read</button>
+      <button class="button button-read"      onclick="saveFromModal('maybe')">☆ Maybe</button>
+      <a      class="button button-secondary" id="mLink" href="#" target="_blank">↗ Open paper</a>
+      <button class="button button-secondary" onclick="copyBibtex()">⎘ BibTeX</button>
+      <button class="button button-ghost"     onclick="skipFromModal()">✕ Skip</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── STACK MODAL (mobile) ──────────────────────── -->
+<div class="overlay hidden" id="stackOverlay" onclick="if(event.target===this)closeOverlay('stackOverlay')">
+  <div class="modal glass" style="max-width:480px">
+    <button class="close-btn modal-close" onclick="closeOverlay('stackOverlay')">✕</button>
+    <h3 class="m-title" style="margin-bottom:14px">Reading Stack</h3>
+    <div class="tier-row" style="margin-bottom:12px">
+      <button class="tier-tab active" data-tier="all"   onclick="setTierModal('all',this)">All <span id="mtcAll">0</span></button>
+      <button class="tier-tab"        data-tier="must"  onclick="setTierModal('must',this)">♥ Must <span id="mtcMust">0</span></button>
+      <button class="tier-tab"        data-tier="maybe" onclick="setTierModal('maybe',this)">☆ Maybe <span id="mtcMaybe">0</span></button>
+    </div>
+    <div class="list" id="mStackList" style="max-height:50vh"></div>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+      <button class="button button-primary"   onclick="exportBibtex()">⬇ BibTeX</button>
+      <button class="button button-secondary" onclick="exportJson()">⬇ JSON</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
