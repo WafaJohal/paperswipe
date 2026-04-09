@@ -243,6 +243,8 @@ body {
 .bs-year     { background: rgba(27,42,74,0.05);   color: var(--muted); }
 .bs-new      { background: rgba(122,158,122,0.15); color: #3a6e3a; }
 .bs-cat      { background: rgba(27,42,74,0.05);   color: var(--muted); }
+.bs-ieee     { background: rgba(0,112,186,0.1);    color: #0070ba; }
+.bs-acm      { background: rgba(178,31,31,0.1);    color: #b21f1f; }
 
 .card-title {
   font-family: 'Gagalin', Impact, fantasy; font-weight: 400;

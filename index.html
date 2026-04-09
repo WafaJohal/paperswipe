@@ -51,6 +51,8 @@
         <button class="src-tab active" data-src="all">All <span class="tc" id="cntAll">0</span></button>
         <button class="src-tab" data-src="arxiv">arXiv <span class="tc" id="cntArxiv">0</span></button>
         <button class="src-tab" data-src="semantic">Semantic Scholar <span class="tc" id="cntSemantic">0</span></button>
+        <button class="src-tab" data-src="ieee">IEEE <span class="tc" id="cntIeee">0</span></button>
+        <button class="src-tab" data-src="acm">ACM DL <span class="tc" id="cntAcm">0</span></button>
       </div>
 
       <!-- CARD STAGE -->
@@ -171,9 +173,20 @@
       <div class="setting-row">
         <label>Sources</label>
         <select id="sourceInput">
-          <option value="both" selected>arXiv + Semantic Scholar</option>
-          <option value="arxiv">arXiv only</option>
+          <option value="all" selected>All sources</option>
+          <option value="arxiv">arXiv RSS only</option>
           <option value="semantic">Semantic Scholar only</option>
+          <option value="ieee">IEEE Xplore only</option>
+          <option value="acm">ACM DL RSS only</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <label>Recency window</label>
+        <select id="windowInput">
+          <option value="1">Last 24 hours</option>
+          <option value="3">Last 3 days</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="30">Last 30 days</option>
         </select>
       </div>
       <div class="setting-row">
@@ -182,6 +195,15 @@
           <option value="recent" selected>Newest first</option>
           <option value="relevance">Relevance</option>
         </select>
+      </div>
+      <div class="setting-row">
+        <label style="display:flex;flex-direction:column;gap:2px">
+          IEEE Xplore API Key
+          <span style="font-size:0.72rem;color:var(--muted);font-weight:400">
+            <a href="https://developer.ieee.org" target="_blank" class="lnk">Register free ↗</a>
+          </span>
+        </label>
+        <input type="text" id="ieeeKeyInput" placeholder="Optional — enables IEEE source" style="width:200px;background:rgba(255,255,255,0.85);border:1px solid rgba(27,42,74,0.14);color:var(--chri-navy);padding:5px 9px;border-radius:8px;font-family:'Karla',Arial,sans-serif;font-size:0.82px;outline:none">
       </div>
     </div>
 

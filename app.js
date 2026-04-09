@@ -26,11 +26,27 @@ const DEFAULT_PROFILE = {
   venues:     ['CHI', 'UIST', 'ICRA', 'NeurIPS', 'HRI'],
   authors:    [],
   limit:      40,
-  source:     'both',
+  source:     'all',
   sort:       'recent',
+  window:     7,
+  ieeeKey:    '',
 };
 
 const GIST_FILENAME = 'paperswipe-data.json';
+
+// ACM DL RSS feeds keyed by venue name
+const ACM_FEEDS = [
+  { venue: 'CHI',    url: 'https://dl.acm.org/action/showFeed?type=etoc&feed=rss&jc=chi' },
+  { venue: 'UIST',   url: 'https://dl.acm.org/action/showFeed?type=etoc&feed=rss&jc=uist' },
+  { venue: 'CSCW',   url: 'https://dl.acm.org/action/showFeed?type=etoc&feed=rss&jc=cscw' },
+  { venue: 'ASSETS', url: 'https://dl.acm.org/action/showFeed?type=etoc&feed=rss&jc=assets' },
+  { venue: 'IUI',    url: 'https://dl.acm.org/action/showFeed?type=etoc&feed=rss&jc=iui' },
+  { venue: 'ToCHI',  url: 'https://dl.acm.org/action/showFeed?type=etoc&feed=rss&jc=tochi' },
+  { venue: 'IMWUT',  url: 'https://dl.acm.org/action/showFeed?type=etoc&feed=rss&jc=imwut' },
+];
+
+// CORS proxy for RSS feeds (browser cross-origin limitation)
+const CORS = 'https://api.allorigins.win/raw?url=';
 
 // ── STATE ────────────────────────────────────────────────
 let profile   = lsLoad('ps_profile')   || DEFAULT_PROFILE;
@@ -221,8 +237,19 @@ function renderSyncUI() {
 }
 
 // ═══════════════════════════════════════════════════════════
-// FETCH (papers from arXiv / Semantic Scholar)
+// FETCH  —  all sources, 7-day window
 // ═══════════════════════════════════════════════════════════
+
+function cutoffDate() {
+  const d = new Date();
+  d.setDate(d.getDate() - (profile.window || 7));
+  return d;
+}
+
+function withinWindow(dateStr) {
+  if (!dateStr) return true; // unknown date: let it through
+  return new Date(dateStr) >= cutoffDate();
+}
 
 async function refreshFeed() {
   const hasProfile = profile.keywords.length || profile.categories.length ||
@@ -235,22 +262,37 @@ async function refreshFeed() {
   btn.textContent = '↻ Loading…';
 
   try {
-    let results = [];
-    if (profile.source === 'arxiv' || profile.source === 'both')    results = results.concat(await fetchArxiv());
-    if (profile.source === 'semantic' || profile.source === 'both') results = results.concat(await fetchSemantic());
+    const src = profile.source || 'all';
+
+    // Run all relevant fetchers in parallel
+    const tasks = [];
+    if (src === 'all' || src === 'arxiv')    tasks.push(fetchArxivRSS());
+    if (src === 'all' || src === 'semantic') tasks.push(fetchSemantic());
+    if (src === 'all' || src === 'ieee')     tasks.push(fetchIEEE());
+    if (src === 'all' || src === 'acm')      tasks.push(fetchACM());
+
+    const batches  = await Promise.allSettled(tasks);
+    let results    = batches.flatMap(b => b.status === 'fulfilled' ? b.value : []);
 
     // Deduplicate by title fingerprint
-    const seen = new Map();
+    const seenTitles = new Map();
     results = results.filter(p => {
       const k = p.title.toLowerCase().replace(/\W/g, '').slice(0, 45);
-      if (seen.has(k)) return false;
-      seen.set(k, true); return true;
+      if (seenTitles.has(k)) return false;
+      seenTitles.set(k, true); return true;
     });
 
+    // Remove already-seen papers
     results = results.filter(p => !seenIds.has(p.id));
-    if (profile.sort === 'recent') results.sort((a, b) => (b.year || 0) - (a.year || 0));
-    results = results.slice(0, profile.limit);
 
+    // Sort newest first by published date (full ISO string, not just year)
+    results.sort((a, b) => {
+      const da = a.published ? new Date(a.published) : new Date(0);
+      const db = b.published ? new Date(b.published) : new Date(0);
+      return db - da;
+    });
+
+    results = results.slice(0, profile.limit);
     allPapers = results;
     applySourceFilter();
     updateSourceCounts();
@@ -259,12 +301,12 @@ async function refreshFeed() {
     lsSave('ps_lastFetch', lastFetch);
 
     if (papers.length === 0) {
-      showEmpty('Feed is empty', 'No new papers since your last visit. Try widening keywords or categories.');
+      showEmpty('Feed is empty', `No papers in the last ${profile.window || 7} days matching your profile. Try widening keywords or increasing the time window.`);
       setFeedDot('idle');
     } else {
       renderCard();
       setFeedDot('live');
-      showToast(`${papers.length} new papers in your feed`);
+      showToast(`${papers.length} papers in the last ${profile.window || 7} days`);
       updateInfoBar();
     }
   } catch (e) {
@@ -275,21 +317,69 @@ async function refreshFeed() {
   btn.textContent = '↻ Refresh';
 }
 
-async function fetchArxiv() {
+// ── arXiv RSS ────────────────────────────────────────────
+// arXiv publishes daily RSS per category — genuinely same-day fresh.
+async function fetchArxivRSS() {
+  const cats = profile.categories.length ? profile.categories : ['cs.AI'];
+  const results = [];
+
+  await Promise.allSettled(cats.map(async cat => {
+    try {
+      const url  = `${CORS}${encodeURIComponent('https://rss.arxiv.org/rss/' + cat)}`;
+      const text = await (await fetch(url)).text();
+      const items = parseArxivRSS(text, cat);
+      results.push(...items);
+    } catch (e) { console.warn(`arXiv RSS failed for ${cat}`, e); }
+  }));
+
+  // Also fetch via search API for keyword/author matching with date filter
+  const searchResults = await fetchArxivSearch();
+  results.push(...searchResults);
+
+  return results;
+}
+
+function parseArxivRSS(xml, feedCat) {
+  const doc   = new DOMParser().parseFromString(xml, 'text/xml');
+  const items = [...doc.querySelectorAll('item')];
+  return items.map(item => {
+    const title    = item.querySelector('title')?.textContent?.trim().replace(/\s+/g, ' ') || '';
+    const link     = item.querySelector('link')?.textContent?.trim() || '';
+    const desc     = item.querySelector('description')?.textContent?.trim().replace(/<[^>]+>/g, '').replace(/\s+/g, ' ') || '';
+    const pubDate  = item.querySelector('pubDate')?.textContent?.trim() || '';
+    const published = pubDate ? new Date(pubDate).toISOString() : '';
+    // Authors from dc:creator or creator
+    const ns       = 'http://purl.org/dc/elements/1.1/';
+    const creator  = item.getElementsByTagNameNS(ns, 'creator')[0]?.textContent || '';
+    const authors  = creator ? creator.split(',').map(a => a.trim()) : [];
+    // arXiv ID from link
+    const id       = link || title;
+    const cats     = [feedCat];
+
+    if (!title || !withinWindow(published)) return null;
+    return { id, title, abstract: desc, published,
+             year: published ? new Date(published).getFullYear() : null,
+             authors, categories: cats, venue: feedCat, url: link,
+             source: 'arxiv', citeCount: null, doi: '',
+             matchedBy: whyMatched({ title, abstract: desc, authors, categories: cats, venue: feedCat }) };
+  }).filter(Boolean);
+}
+
+async function fetchArxivSearch() {
+  // Use the search API for keyword + author queries, with date sorting
   const parts = [];
   if (profile.keywords.length)
     parts.push(`(${profile.keywords.map(k => `all:${encodeURIComponent(k)}`).join('+OR+')})`);
-  if (profile.categories.length)
-    parts.push(`(${profile.categories.map(c => `cat:${c}`).join('+OR+')})`);
   if (profile.authors.length)
     parts.push(`(${profile.authors.map(a => `au:${encodeURIComponent(a)}`).join('+OR+')})`);
   if (!parts.length) return [];
 
-  const sort = profile.sort === 'recent' ? 'submittedDate' : 'relevance';
-  const url  = `https://export.arxiv.org/api/query?search_query=${parts.join('+OR+')}&sortBy=${sort}&sortOrder=descending&start=0&max_results=${Math.min(profile.limit, 100)}`;
+  const url = `https://export.arxiv.org/api/query?search_query=${parts.join('+OR+')}&sortBy=submittedDate&sortOrder=descending&start=0&max_results=50`;
   try {
-    return parseArxivXML(await (await fetch(url)).text());
-  } catch (e) { console.warn('arXiv fetch failed', e); return []; }
+    const text  = await (await fetch(url)).text();
+    const items = parseArxivXML(text);
+    return items.filter(p => withinWindow(p.published));
+  } catch (e) { console.warn('arXiv search failed', e); return []; }
 }
 
 function parseArxivXML(xml) {
@@ -299,45 +389,134 @@ function parseArxivXML(xml) {
     const title     = (e.querySelector('title')?.textContent || '').trim().replace(/\s+/g, ' ');
     const abstract  = (e.querySelector('summary')?.textContent || '').trim().replace(/\s+/g, ' ');
     const published = (e.querySelector('published')?.textContent || '').trim();
+    const updated   = (e.querySelector('updated')?.textContent || '').trim();
     const authors   = [...e.querySelectorAll('author name')].map(n => n.textContent.trim());
     const cats      = [...e.querySelectorAll('category')].map(c => c.getAttribute('term')).slice(0, 4);
     const year      = published ? new Date(published).getFullYear() : null;
-    return { id, title, abstract, published, year, authors, categories: cats,
-             venue: cats[0] || '', url: id, source: 'arxiv', citeCount: null, doi: '',
+    // Use the earlier of published/updated as the real submission date
+    const dateStr   = published || updated;
+    return { id, title, abstract, published: dateStr, year, authors,
+             categories: cats, venue: cats[0] || '', url: id,
+             source: 'arxiv', citeCount: null, doi: '',
              matchedBy: whyMatched({ title, abstract, authors, categories: cats, venue: cats[0] || '' }) };
   }).filter(p => p.title && p.abstract);
 }
 
+// ── Semantic Scholar ─────────────────────────────────────
 async function fetchSemantic() {
   if (!profile.keywords.length && !profile.authors.length) return [];
   const queries = [...profile.keywords.slice(0, 3), ...(profile.authors.length ? [profile.authors[0]] : [])];
   const fields  = 'title,abstract,authors,year,venue,externalIds,citationCount,openAccessPdf,publicationDate';
+  const cutoff  = cutoffDate().toISOString().slice(0, 10); // YYYY-MM-DD
   let all = [];
+
   for (const q of queries) {
     try {
-      const resp = await fetch(`https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=20&fields=${fields}`);
+      const url  = `https://api.semanticscholar.org/graph/v1/paper/search?query=${encodeURIComponent(q)}&limit=30&fields=${fields}`;
+      const resp = await fetch(url);
       if (!resp.ok) continue;
       const data = await resp.json();
-      all = all.concat((data.data || []).map(p => {
+      const mapped = (data.data || []).map(p => {
         const doi     = p.externalIds?.DOI || '';
         const arxivId = p.externalIds?.ArXiv || '';
         const pdfUrl  = p.openAccessPdf?.url || (arxivId ? `https://arxiv.org/abs/${arxivId}` : '') || (doi ? `https://doi.org/${doi}` : '');
         const authors = (p.authors || []).map(a => a.name);
+        const dateStr = p.publicationDate || (p.year ? `${p.year}-06-01` : '');
         return { id: p.paperId || '', title: p.title || '', abstract: p.abstract || '',
-                 published: p.publicationDate || (p.year ? `${p.year}-01-01` : ''),
-                 year: p.year || null, authors, categories: [], venue: p.venue || '',
+                 published: dateStr, year: p.year || null, authors,
+                 categories: [], venue: p.venue || '',
                  url: pdfUrl || `https://www.semanticscholar.org/paper/${p.paperId}`,
                  doi, source: 'semantic', citeCount: p.citationCount || null,
                  matchedBy: whyMatched({ title: p.title || '', abstract: p.abstract || '', authors, categories: [], venue: p.venue || '' }) };
-      }).filter(p => p.title && p.abstract));
+      }).filter(p => p.title && p.abstract && withinWindow(p.published));
+      all = all.concat(mapped);
     } catch (e) { console.warn('S2 query failed', e); }
   }
   return all;
 }
 
+// ── IEEE Xplore ──────────────────────────────────────────
+async function fetchIEEE() {
+  const key = profile.ieeeKey || lsLoad('ps_ieee_key') || '';
+  if (!key) return [];
+
+  const cutoff  = cutoffDate().toISOString().slice(0, 10).replace(/-/g, ''); // YYYYMMDD
+  const terms   = [...profile.keywords, ...profile.venues].slice(0, 4);
+  if (!terms.length) return [];
+
+  const queryStr = terms.map(t => `(${encodeURIComponent(t)})`).join(' OR ');
+  const url = `https://ieeexploreapi.ieee.org/api/v1/articles?apikey=${key}&querytext=${queryStr}&start_record=1&max_records=25&start_year=${new Date().getFullYear() - 1}&sort_order=desc&sort_field=publication_year`;
+
+  try {
+    const resp = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!resp.ok) { console.warn('IEEE API error', resp.status); return []; }
+    const data = await resp.json();
+    return (data.articles || []).map(a => {
+      const dateStr = a.publication_date || (a.publication_year ? `${a.publication_year}-01-01` : '');
+      const authors = (a.authors?.authors || []).map(au => au.full_name || '');
+      const doi     = a.doi || '';
+      return { id: doi || a.article_number || a.title,
+               title: a.title || '', abstract: a.abstract || '',
+               published: dateStr,
+               year: a.publication_year ? parseInt(a.publication_year) : null,
+               authors, categories: [], venue: a.publication_title || '',
+               url: a.html_url || (doi ? `https://doi.org/${doi}` : ''),
+               doi, source: 'ieee', citeCount: null,
+               matchedBy: whyMatched({ title: a.title || '', abstract: a.abstract || '', authors, categories: [], venue: a.publication_title || '' }) };
+    }).filter(p => p.title && withinWindow(p.published));
+  } catch (e) { console.warn('IEEE fetch failed', e); return []; }
+}
+
+// ── ACM Digital Library RSS ──────────────────────────────
+// ACM publishes per-venue RSS feeds. We fetch the ones matching
+// venues in the user's profile.
+async function fetchACM() {
+  // Find which ACM feeds match the user's configured venues
+  const activeFeeds = ACM_FEEDS.filter(f =>
+    profile.venues.some(v => v.toLowerCase().includes(f.venue.toLowerCase()) ||
+                             f.venue.toLowerCase().includes(v.toLowerCase()))
+  );
+  if (!activeFeeds.length) return [];
+
+  const results = [];
+  await Promise.allSettled(activeFeeds.map(async feed => {
+    try {
+      const url  = `${CORS}${encodeURIComponent(feed.url)}`;
+      const text = await (await fetch(url)).text();
+      const items = parseACMRSS(text, feed.venue);
+      results.push(...items);
+    } catch (e) { console.warn(`ACM RSS failed for ${feed.venue}`, e); }
+  }));
+  return results;
+}
+
+function parseACMRSS(xml, venue) {
+  const doc   = new DOMParser().parseFromString(xml, 'text/xml');
+  const items = [...doc.querySelectorAll('item')];
+  return items.map(item => {
+    const title   = item.querySelector('title')?.textContent?.trim() || '';
+    const link    = item.querySelector('link')?.textContent?.trim() || '';
+    const desc    = item.querySelector('description')?.textContent?.trim().replace(/<[^>]+>/g, '').replace(/\s+/g, ' ') || '';
+    const pubDate = item.querySelector('pubDate')?.textContent?.trim() || '';
+    const published = pubDate ? new Date(pubDate).toISOString() : '';
+    const doi     = link.includes('doi.org') ? link.split('doi.org/')[1] : '';
+    // Authors from dc:creator
+    const ns      = 'http://purl.org/dc/elements/1.1/';
+    const creator = item.getElementsByTagNameNS(ns, 'creator')[0]?.textContent || '';
+    const authors = creator ? creator.split(';').map(a => a.trim()).filter(Boolean) : [];
+
+    if (!title || !withinWindow(published)) return null;
+    return { id: link || title, title, abstract: desc, published,
+             year: published ? new Date(published).getFullYear() : null,
+             authors, categories: [], venue,
+             url: link, doi, source: 'acm', citeCount: null,
+             matchedBy: whyMatched({ title, abstract: desc, authors, categories: [], venue }) };
+  }).filter(Boolean);
+}
+
 function whyMatched(p) {
   for (const kw of profile.keywords)
-    if ((p.title + ' ' + p.abstract).toLowerCase().includes(kw.toLowerCase()))
+    if ((p.title + ' ' + (p.abstract || '')).toLowerCase().includes(kw.toLowerCase()))
       return { type: 'keyword', value: kw };
   for (const cat of profile.categories)
     if ((p.categories || []).some(c => c.toLowerCase().includes(cat.toLowerCase())))
@@ -373,6 +552,8 @@ function updateSourceCounts() {
   document.getElementById('cntAll').textContent      = allPapers.length;
   document.getElementById('cntArxiv').textContent    = allPapers.filter(p => p.source === 'arxiv').length;
   document.getElementById('cntSemantic').textContent = allPapers.filter(p => p.source === 'semantic').length;
+  document.getElementById('cntIeee').textContent     = allPapers.filter(p => p.source === 'ieee').length;
+  document.getElementById('cntAcm').textContent      = allPapers.filter(p => p.source === 'acm').length;
 }
 
 // ── CARD RENDERING ───────────────────────────────────────
@@ -420,9 +601,11 @@ function renderCard() {
 }
 
 function buildCard(p) {
-  const srcCls   = p.source === 'arxiv' ? 'bs-arxiv' : 'bs-semantic';
-  const srcLbl   = p.source === 'arxiv' ? 'arXiv' : 'S2';
-  const yearTag  = p.year    ? `<span class="badge-src bs-year">${p.year}</span>` : '';
+  const srcMap = { arxiv: ['bs-arxiv','arXiv'], semantic: ['bs-semantic','S2'],
+                   ieee: ['bs-ieee','IEEE'], acm: ['bs-acm','ACM DL'] };
+  const [srcCls, srcLbl] = srcMap[p.source] || ['bs-semantic', p.source];
+  const dateLabel = p.published ? new Date(p.published).toLocaleDateString(undefined, {month:'short',day:'numeric',year:'numeric'}) : (p.year || '');
+  const yearTag  = dateLabel ? `<span class="badge-src bs-year">${dateLabel}</span>` : '';
   const venueTag = p.venue   ? `<span class="badge-src bs-venue">${esc(p.venue.slice(0, 30))}</span>` : '';
   const catTags  = p.categories.slice(0, 2).map(c => `<span class="badge-src bs-cat">${esc(c)}</span>`).join('');
   const newTag   = isNew(p)  ? `<span class="badge-src bs-new">new</span>` : '';
@@ -723,8 +906,11 @@ function loadProfileUI() {
   tagLists.venue    = [...profile.venues];
   tagLists.author   = [...profile.authors];
   document.getElementById('limitInput').value  = profile.limit  || 40;
-  document.getElementById('sourceInput').value = profile.source || 'both';
+  document.getElementById('sourceInput').value = profile.source || 'all';
+  document.getElementById('windowInput').value = profile.window || 7;
   document.getElementById('sortInput').value   = profile.sort   || 'recent';
+  const ik = document.getElementById('ieeeKeyInput');
+  if (ik) ik.value = profile.ieeeKey || lsLoad('ps_ieee_key') || '';
   renderAllTags();
   updateCatGrid();
 }
@@ -774,6 +960,8 @@ function toggleCat(id, el) {
 }
 
 function saveAndRefresh() {
+  const ieeeKey = document.getElementById('ieeeKeyInput')?.value.trim() || '';
+  if (ieeeKey) lsSave('ps_ieee_key', ieeeKey);
   profile = {
     keywords:   [...tagLists.keyword],
     categories: [...tagLists.category],
@@ -781,7 +969,9 @@ function saveAndRefresh() {
     authors:    [...tagLists.author],
     limit:      parseInt(document.getElementById('limitInput').value) || 40,
     source:     document.getElementById('sourceInput').value,
+    window:     parseInt(document.getElementById('windowInput').value) || 7,
     sort:       document.getElementById('sortInput').value,
+    ieeeKey,
   };
   lsSave('ps_profile', profile);
   closeSettings();
