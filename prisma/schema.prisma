@@ -1,0 +1,46 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("POSTGRES_PRISMA_URL")
+  directUrl = env("POSTGRES_URL_NON_POOLING")
+}
+
+model User {
+  id         String        @id @default(cuid())
+  email      String        @unique
+  name       String?
+  image      String?
+  provider   String
+  createdAt  DateTime      @default(now())
+  settings   UserSettings?
+  seenPapers SeenPaper[]
+}
+
+model UserSettings {
+  id                       String   @id @default(cuid())
+  userId                   String   @unique
+  user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  zoteroApiKeyEncrypted    String?
+  zoteroUserId             String?
+  zoteroLibraryType        String?
+  zoteroCollectionKey      String?
+  zoteroMaybeCollectionKey String?
+  filterKeywords           Json     @default("[]")
+  filterDateRange          String   @default("month")
+  filterVenues             Json     @default("[]")
+  updatedAt                DateTime @updatedAt
+}
+
+model SeenPaper {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  openAlexId String
+  seenAt     DateTime @default(now())
+
+  @@unique([userId, openAlexId])
+  @@index([userId])
+}
