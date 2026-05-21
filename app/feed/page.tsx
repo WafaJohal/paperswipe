@@ -53,7 +53,7 @@ export default function FeedPage() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="text-3xl">🎉</p>
-        <p className="font-semibold text-white">You've seen everything in your feed.</p>
+        <p className="font-semibold text-white">You&apos;ve seen everything in your feed.</p>
         <p className="text-sm text-white/40">Adjust your filters or check back later.</p>
         <button
           onClick={() => {
