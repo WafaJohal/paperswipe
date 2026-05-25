@@ -58,13 +58,15 @@ interface MatchInput {
   myOrcid: string | null;
 }
 
-interface MatchResult {
-  found: true;
-  matchId: string;
-  otherUser: { id: string; name: string | null; image: string | null; orcid: string | null };
-  theirPaper: { id: string; title: string };
-  myPaper: { id: string; title: string };
-} | { found: false }
+type MatchResult =
+  | {
+      found: true;
+      matchId: string;
+      otherUser: { id: string; name: string | null; image: string | null; orcid: string | null };
+      theirPaper: { id: string; title: string };
+      myPaper: { id: string; title: string };
+    }
+  | { found: false };
 
 async function detectMatch(input: MatchInput): Promise<MatchResult> {
   const { savingUserId, savedPaperId, savedPaperTitle, savedPaperAuthorships, myOrcid } = input;
