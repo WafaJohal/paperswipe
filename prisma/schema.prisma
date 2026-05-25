@@ -9,20 +9,24 @@ datasource db {
 }
 
 model User {
-  id         String        @id @default(cuid())
-  email      String        @unique
-  name       String?
-  image      String?
-  provider   String
-  createdAt  DateTime      @default(now())
-  settings   UserSettings?
-  seenPapers SeenPaper[]
+  id          String        @id @default(cuid())
+  email       String        @unique
+  name        String?
+  image       String?
+  provider    String
+  createdAt   DateTime      @default(now())
+  settings    UserSettings?
+  seenPapers  SeenPaper[]
+  savedPapers SavedPaper[]
+  matchesAs1  Match[]       @relation("MatchUser1")
+  matchesAs2  Match[]       @relation("MatchUser2")
 }
 
 model UserSettings {
   id                       String   @id @default(cuid())
   userId                   String   @unique
   user                     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orcid                    String?
   zoteroApiKeyEncrypted    String?
   zoteroUserId             String?
   zoteroLibraryType        String?
@@ -43,4 +47,40 @@ model SeenPaper {
 
   @@unique([userId, openAlexId])
   @@index([userId])
+}
+
+// Papers the user swiped right on — separate from SeenPaper so we can match on authorship
+model SavedPaper {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  openAlexId  String
+  title       String
+  authors     Json     // [{ name: string, orcid: string | null }]
+  savedAt     DateTime @default(now())
+
+  @@unique([userId, openAlexId])
+  @@index([userId])
+}
+
+// A mutual match between two researchers
+model Match {
+  id        String   @id @default(cuid())
+  user1Id   String
+  user1     User     @relation("MatchUser1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2Id   String
+  user2     User     @relation("MatchUser2", fields: [user2Id], references: [id], onDelete: Cascade)
+  // paper1: paper by user2 that user1 liked
+  paper1Id  String
+  paper1Title String
+  // paper2: paper by user1 that user2 liked
+  paper2Id  String
+  paper2Title String
+  createdAt DateTime @default(now())
+  seen1     Boolean  @default(false) // user1 has dismissed the match overlay
+  seen2     Boolean  @default(false)
+
+  @@unique([user1Id, user2Id])
+  @@index([user1Id])
+  @@index([user2Id])
 }

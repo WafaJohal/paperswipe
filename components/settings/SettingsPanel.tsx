@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import type { ZoteroCollection } from "@/hooks/useZotero";
 
 interface UserSettings {
+  orcid: string | null;
   zoteroUserId: string | null;
   zoteroCollectionKey: string | null;
   zoteroMaybeCollectionKey: string | null;
@@ -29,6 +30,7 @@ const DATE_RANGE_OPTIONS = [
 
 export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [orcid, setOrcid] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [userId, setUserId] = useState("");
   const [collections, setCollections] = useState<ZoteroCollection[]>([]);
@@ -52,6 +54,7 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
       .then(({ settings: s }: { settings: UserSettings | null }) => {
         if (!s) return;
         setSettings(s);
+        setOrcid(s.orcid ?? "");
         setUserId(s.zoteroUserId ?? "");
         setSaveCollection(s.zoteroCollectionKey ?? "");
         setMaybeCollection(s.zoteroMaybeCollectionKey ?? "");
@@ -92,6 +95,7 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
+        orcid: orcid.trim() || undefined,
         zoteroUserId: userId || undefined,
         zoteroCollectionKey: saveCollection || undefined,
         zoteroMaybeCollectionKey: maybeCollection || undefined,
@@ -158,6 +162,26 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-10 space-y-8">
+
+              {/* ── ORCID section ── */}
+              <section>
+                <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
+                  Your ORCID
+                </h3>
+                <p className="mb-3 text-xs text-white/40">
+                  Required to match with researchers who read your papers.{" "}
+                  <a href="https://orcid.org" target="_blank" rel="noopener noreferrer" className="text-[#ff3b7f] hover:underline">
+                    Get your ORCID →
+                  </a>
+                </p>
+                <input
+                  type="text"
+                  value={orcid}
+                  onChange={(e) => setOrcid(e.target.value)}
+                  placeholder="0000-0001-2345-6789"
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 font-mono outline-none focus:border-white/25"
+                />
+              </section>
 
               {/* ── Zotero section ── */}
               <section>

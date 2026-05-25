@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useSession } from "next-auth/react";
-import { signIn } from "next-auth/react";
+import { useSession, signIn } from "next-auth/react";
 import { usePaperFeed } from "@/hooks/usePaperFeed";
 import { useZotero } from "@/hooks/useZotero";
+import { useMatch } from "@/lib/MatchContext";
 import { CardStack } from "@/components/cards/CardStack";
 import { Toast } from "@/components/ui/Toast";
+import { MatchOverlay } from "@/components/match/MatchOverlay";
 import type { Paper } from "@/app/api/papers/route";
 
 export default function FeedPage() {
@@ -15,6 +16,8 @@ export default function FeedPage() {
 
   const { papers, loading, error, skip, save, maybe, undo, isEmpty } = usePaperFeed();
   const { saveToZotero, saveAsMaybe, toast } = useZotero();
+  const { savePaper, pendingMatch, dismissMatch } = useMatch();
+
   const [guestToast, setGuestToast] = useState<string | null>(null);
 
   const showGuestPrompt = useCallback(() => {
@@ -25,10 +28,14 @@ export default function FeedPage() {
   const handleSave = useCallback(
     (paper: Paper) => {
       save(paper);
-      if (isGuest) showGuestPrompt();
-      else saveToZotero(paper);
+      if (isGuest) {
+        showGuestPrompt();
+      } else {
+        saveToZotero(paper);
+        savePaper(paper); // check for researcher match
+      }
     },
-    [save, isGuest, showGuestPrompt, saveToZotero]
+    [save, isGuest, showGuestPrompt, saveToZotero, savePaper]
   );
 
   const handleMaybe = useCallback(
@@ -36,6 +43,7 @@ export default function FeedPage() {
       maybe(paper);
       if (isGuest) showGuestPrompt();
       else saveAsMaybe(paper);
+      // Maybe saves don't trigger match detection (only right-swipes / ♥ do)
     },
     [maybe, isGuest, showGuestPrompt, saveAsMaybe]
   );
@@ -99,8 +107,10 @@ export default function FeedPage() {
         onMaybe={handleMaybe}
         onUndo={undo}
       />
+
       <Toast toast={toast} />
-      {/* Guest sign-in nudge */}
+
+      {/* Guest save nudge */}
       {guestToast && (
         <div className="fixed bottom-32 left-1/2 z-50 -translate-x-1/2">
           <button
@@ -112,6 +122,14 @@ export default function FeedPage() {
           </button>
         </div>
       )}
+
+      {/* Match overlay */}
+      <MatchOverlay
+        match={pendingMatch}
+        myName={session?.user?.name ?? null}
+        myImage={session?.user?.image ?? null}
+        onDismiss={dismissMatch}
+      />
     </>
   );
 }

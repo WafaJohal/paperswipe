@@ -5,6 +5,7 @@ import { encrypt, decrypt, maskApiKey } from "@/lib/crypto";
 import { getRequiredUser } from "@/lib/session";
 
 const UpdateSettingsSchema = z.object({
+  orcid: z.string().optional(),
   zoteroApiKey: z.string().min(1).optional(),
   zoteroUserId: z.string().optional(),
   zoteroLibraryType: z.enum(["user", "group"]).optional(),

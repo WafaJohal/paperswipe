@@ -65,6 +65,10 @@ function normalise(work: OpenAlexResponse["results"][number]) {
     id: work.id,
     title: work.title ?? "Untitled",
     authors: work.authorships.map((a) => a.author.display_name),
+    authorships: work.authorships.map((a) => ({
+      name: a.author.display_name,
+      orcid: a.author.orcid ?? null,
+    })),
     year: work.publication_year,
     venue: work.primary_location?.source?.display_name ?? null,
     isOA: work.open_access?.is_oa ?? work.primary_location?.source?.is_oa ?? false,

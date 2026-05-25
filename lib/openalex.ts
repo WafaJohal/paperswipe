@@ -1,5 +1,5 @@
 export interface OpenAlexAuthor {
-  author: { display_name: string };
+  author: { display_name: string; orcid: string | null };
 }
 
 export interface OpenAlexWork {
@@ -104,6 +104,7 @@ export function buildOpenAlexUrl(filters: FeedFilters, page = 1): string {
     "doi",
     "concepts",
     "open_access",
+    "authorships.author.orcid",
   ].join(",");
 
   // Build the URL as a raw string so | is preserved in filter values
