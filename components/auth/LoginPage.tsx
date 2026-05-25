@@ -1,10 +1,13 @@
 "use client";
 
 import { signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { GitHubIcon } from "@/components/icons/GitHubIcon";
 import { GoogleIcon } from "@/components/icons/GoogleIcon";
 
 export default function LoginPage() {
+  const router = useRouter();
+
   return (
     <main className="relative flex h-screen w-screen flex-col items-center justify-center overflow-hidden bg-[#0f0f0f] px-6">
       {/* Ambient glow blobs */}
@@ -37,9 +40,7 @@ export default function LoginPage() {
             className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-white transition hover:border-white/20 hover:bg-white/10 active:scale-[0.98]"
           >
             <GitHubIcon className="h-5 w-5 shrink-0 text-white" />
-            <span className="flex-1 text-left text-sm font-semibold">
-              Continue with GitHub
-            </span>
+            <span className="flex-1 text-left text-sm font-semibold">Continue with GitHub</span>
             <svg className="h-4 w-4 text-white/30 transition group-hover:text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
@@ -50,17 +51,29 @@ export default function LoginPage() {
             className="group flex items-center gap-4 rounded-2xl border border-white/10 bg-white/5 px-5 py-4 text-white transition hover:border-white/20 hover:bg-white/10 active:scale-[0.98]"
           >
             <GoogleIcon className="h-5 w-5 shrink-0" />
-            <span className="flex-1 text-left text-sm font-semibold">
-              Continue with Google
-            </span>
+            <span className="flex-1 text-left text-sm font-semibold">Continue with Google</span>
             <svg className="h-4 w-4 text-white/30 transition group-hover:text-white/60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
           </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 py-1">
+            <div className="flex-1 border-t border-white/10" />
+            <span className="text-xs text-white/25">or</span>
+            <div className="flex-1 border-t border-white/10" />
+          </div>
+
+          <button
+            onClick={() => router.push("/feed")}
+            className="rounded-2xl border border-white/8 px-5 py-3.5 text-sm font-medium text-white/40 transition hover:border-white/15 hover:text-white/60 active:scale-[0.98]"
+          >
+            Continue as guest
+          </button>
         </div>
 
-        <p className="text-center text-xs text-white/25 leading-relaxed">
-          By continuing you agree to our Terms of Service.
+        <p className="text-center text-xs text-white/20 leading-relaxed">
+          Sign in to save papers to Zotero and sync your preferences.
           <br />
           Your Zotero key is encrypted at rest and never shared.
         </p>

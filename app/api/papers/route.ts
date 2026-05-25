@@ -1,32 +1,37 @@
 import { NextResponse } from "next/server";
-import { getRequiredUser } from "@/lib/session";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { buildOpenAlexUrl, reconstructAbstract, OpenAlexResponse } from "@/lib/openalex";
 
 const UA = "PaperSwipe/2.0 (mailto:contact@paperswipe.app)";
 
+const DEFAULT_FILTERS = { keywords: [], dateRange: "month", venues: [] };
+
 export async function GET() {
-  const { user, error } = await getRequiredUser();
-  if (error) return error;
+  const session = await getServerSession(authOptions);
 
-  // Load user settings and seen IDs in parallel
-  const [settings, seenRows] = await Promise.all([
-    db.userSettings.findUnique({ where: { userId: user.id } }),
-    db.seenPaper.findMany({
-      where: { userId: user.id },
-      select: { openAlexId: true },
-    }),
-  ]);
+  let filters = DEFAULT_FILTERS;
+  let seenIds = new Set<string>();
 
-  const seenIds = new Set(seenRows.map((r) => r.openAlexId));
+  if (session?.user?.id) {
+    const [settings, seenRows] = await Promise.all([
+      db.userSettings.findUnique({ where: { userId: session.user.id } }),
+      db.seenPaper.findMany({
+        where: { userId: session.user.id },
+        select: { openAlexId: true },
+      }),
+    ]);
 
-  const filters = {
-    keywords: (settings?.filterKeywords as string[]) ?? [],
-    dateRange: settings?.filterDateRange ?? "month",
-    venues: (settings?.filterVenues as string[]) ?? [],
-  };
+    filters = {
+      keywords: (settings?.filterKeywords as string[]) ?? [],
+      dateRange: settings?.filterDateRange ?? "month",
+      venues: (settings?.filterVenues as string[]) ?? [],
+    };
 
-  // Fetch up to 2 pages to fill a batch of 30 after excluding seen papers
+    seenIds = new Set(seenRows.map((r) => r.openAlexId));
+  }
+
   let results: ReturnType<typeof normalise>[] = [];
   let page = 1;
 
@@ -34,7 +39,7 @@ export async function GET() {
     const url = buildOpenAlexUrl(filters, page);
     const res = await fetch(url, {
       headers: { "User-Agent": UA },
-      next: { revalidate: 300 }, // cache per-edge for 5 min
+      next: { revalidate: 300 },
     });
 
     if (!res.ok) break;

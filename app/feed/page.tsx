@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { useSession } from "next-auth/react";
+import { signIn } from "next-auth/react";
 import { usePaperFeed } from "@/hooks/usePaperFeed";
 import { useZotero } from "@/hooks/useZotero";
 import { CardStack } from "@/components/cards/CardStack";
@@ -8,23 +10,34 @@ import { Toast } from "@/components/ui/Toast";
 import type { Paper } from "@/app/api/papers/route";
 
 export default function FeedPage() {
+  const { data: session } = useSession();
+  const isGuest = !session;
+
   const { papers, loading, error, skip, save, maybe, undo, isEmpty } = usePaperFeed();
   const { saveToZotero, saveAsMaybe, toast } = useZotero();
+  const [guestToast, setGuestToast] = useState<string | null>(null);
+
+  const showGuestPrompt = useCallback(() => {
+    setGuestToast("Sign in to save papers to Zotero");
+    setTimeout(() => setGuestToast(null), 3500);
+  }, []);
 
   const handleSave = useCallback(
     (paper: Paper) => {
       save(paper);
-      saveToZotero(paper); // fire-and-forget; toast shown on result
+      if (isGuest) showGuestPrompt();
+      else saveToZotero(paper);
     },
-    [save, saveToZotero]
+    [save, isGuest, showGuestPrompt, saveToZotero]
   );
 
   const handleMaybe = useCallback(
     (paper: Paper) => {
       maybe(paper);
-      saveAsMaybe(paper);
+      if (isGuest) showGuestPrompt();
+      else saveAsMaybe(paper);
     },
-    [maybe, saveAsMaybe]
+    [maybe, isGuest, showGuestPrompt, saveAsMaybe]
   );
 
   if (loading) {
@@ -54,13 +67,22 @@ export default function FeedPage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
         <p className="text-3xl">🎉</p>
         <p className="font-semibold text-white">You&apos;ve seen everything in your feed.</p>
-        <p className="text-sm text-white/40">Adjust your filters or check back later.</p>
+        <p className="text-sm text-white/40">Check back later for new papers.</p>
+        {isGuest && (
+          <button
+            onClick={() => signIn(undefined, { callbackUrl: "/feed" })}
+            className="mt-2 rounded-xl px-4 py-2 text-sm font-semibold text-white transition"
+            style={{ background: "linear-gradient(135deg, #ff3b7f 0%, #ff7b3b 100%)" }}
+          >
+            Sign in to customise your feed
+          </button>
+        )}
         <button
           onClick={() => {
             sessionStorage.removeItem("paperswipe_feed_cache");
             window.location.reload();
           }}
-          className="mt-2 rounded-xl bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/15 transition"
+          className="rounded-xl bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/15 transition"
         >
           Refresh feed
         </button>
@@ -78,6 +100,18 @@ export default function FeedPage() {
         onUndo={undo}
       />
       <Toast toast={toast} />
+      {/* Guest sign-in nudge */}
+      {guestToast && (
+        <div className="fixed bottom-32 left-1/2 z-50 -translate-x-1/2">
+          <button
+            onClick={() => signIn(undefined, { callbackUrl: "/feed" })}
+            className="flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-black shadow-xl"
+          >
+            <span>{guestToast}</span>
+            <span className="text-[#ff3b7f]">→</span>
+          </button>
+        </div>
+      )}
     </>
   );
 }

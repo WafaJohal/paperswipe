@@ -68,28 +68,32 @@ export interface FeedFilters {
   venues: string[];
 }
 
+/**
+ * Build an OpenAlex /works URL.
+ *
+ * Key design decisions:
+ * - Keywords → `search` param (free-text over title/abstract/concepts).
+ *   Using concepts.display_name would require an exact taxonomy match.
+ * - Venues → filter with `|` OR syntax, built as a raw string so the pipe
+ *   is NOT percent-encoded (URLSearchParams would encode it as %7C).
+ * - The whole URL is assembled manually for the same reason.
+ */
 export function buildOpenAlexUrl(filters: FeedFilters, page = 1): string {
   const base = "https://api.openalex.org/works";
-  const filterParts: string[] = ["type:article"];
+
+  const filterParts: string[] = [];
 
   const fromDate = (DATE_RANGE_MAP[filters.dateRange] ?? DATE_RANGE_MAP.month)();
   filterParts.push(`from_publication_date:${fromDate}`);
 
-  if (filters.keywords.length > 0) {
-    filterParts.push(
-      filters.keywords.map((k) => `concepts.display_name:${encodeURIComponent(k)}`).join("|")
-    );
-  }
-
+  // Venue OR: primary_location.source.display_name:Nature|Science
   if (filters.venues.length > 0) {
     filterParts.push(
-      filters.venues
-        .map((v) => `primary_location.source.display_name:${encodeURIComponent(v)}`)
-        .join("|")
+      `primary_location.source.display_name:${filters.venues.join("|")}`
     );
   }
 
-  const fields = [
+  const select = [
     "id",
     "title",
     "authorships",
@@ -102,13 +106,19 @@ export function buildOpenAlexUrl(filters: FeedFilters, page = 1): string {
     "open_access",
   ].join(",");
 
-  const params = new URLSearchParams({
-    filter: filterParts.join(","),
-    sort: "cited_by_count:desc",
-    "per-page": "30",
-    page: String(page),
-    select: fields,
-  });
+  // Build the URL as a raw string so | is preserved in filter values
+  let url =
+    `${base}` +
+    `?filter=${filterParts.join(",")}` +
+    `&sort=cited_by_count:desc` +
+    `&per-page=30` +
+    `&page=${page}` +
+    `&select=${select}`;
 
-  return `${base}?${params}`;
+  // Keywords use the search param — much more reliable than concept taxonomy lookup
+  if (filters.keywords.length > 0) {
+    url += `&search=${encodeURIComponent(filters.keywords.join(" "))}`;
+  }
+
+  return url;
 }
