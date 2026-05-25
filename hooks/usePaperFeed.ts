@@ -4,10 +4,35 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Paper } from "@/app/api/papers/route";
 
 const SESSION_KEY = "paperswipe_feed_cache";
+export const GUEST_FILTERS_KEY = "paperswipe_guest_filters";
 const PREFETCH_THRESHOLD = 5;
 
+export interface GuestFilters {
+  keywords: string[];
+  dateRange: string;
+  venues: string[];
+}
+
+function readGuestFilters(): GuestFilters | null {
+  try {
+    const raw = sessionStorage.getItem(GUEST_FILTERS_KEY);
+    return raw ? (JSON.parse(raw) as GuestFilters) : null;
+  } catch {
+    return null;
+  }
+}
+
+function buildPapersUrl(): string {
+  const filters = readGuestFilters();
+  if (!filters) return "/api/papers";
+  const params = new URLSearchParams({ dateRange: filters.dateRange });
+  filters.keywords.forEach((k) => params.append("keyword", k));
+  filters.venues.forEach((v) => params.append("venue", v));
+  return `/api/papers?${params}`;
+}
+
 async function fetchBatch(): Promise<Paper[]> {
-  const res = await fetch("/api/papers");
+  const res = await fetch(buildPapersUrl());
   if (!res.ok) throw new Error("Failed to fetch papers");
   const data = await res.json();
   return data.papers as Paper[];
@@ -15,11 +40,12 @@ async function fetchBatch(): Promise<Paper[]> {
 
 async function markSeen(ids: string[]) {
   if (ids.length === 0) return;
-  await fetch("/api/user/seen", {
+  // Silently ignore 401 for guests
+  fetch("/api/user/seen", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ids }),
-  });
+  }).catch(() => {});
 }
 
 export function usePaperFeed() {
@@ -67,32 +93,26 @@ export function usePaperFeed() {
     }
   }, []);
 
-  const removeFront = useCallback((paper: Paper) => {
-    undoStack.current.push(paper);
-    if (undoStack.current.length > 5) undoStack.current.shift();
+  const removeFront = useCallback(
+    (paper: Paper) => {
+      undoStack.current.push(paper);
+      if (undoStack.current.length > 5) undoStack.current.shift();
 
-    setQueue((prev) => {
-      const next = prev.slice(1);
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
-      if (next.length <= PREFETCH_THRESHOLD) prefetch();
-      return next;
-    });
+      setQueue((prev) => {
+        const next = prev.slice(1);
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
+        if (next.length <= PREFETCH_THRESHOLD) prefetch();
+        return next;
+      });
 
-    markSeen([paper.id]);
-  }, [prefetch]);
+      markSeen([paper.id]);
+    },
+    [prefetch]
+  );
 
-  const skip = useCallback((paper: Paper) => {
-    removeFront(paper);
-  }, [removeFront]);
-
-  // save and maybe both dismiss — Zotero calls wired in Step 7
-  const save = useCallback((paper: Paper) => {
-    removeFront(paper);
-  }, [removeFront]);
-
-  const maybe = useCallback((paper: Paper) => {
-    removeFront(paper);
-  }, [removeFront]);
+  const skip = useCallback((paper: Paper) => removeFront(paper), [removeFront]);
+  const save = useCallback((paper: Paper) => removeFront(paper), [removeFront]);
+  const maybe = useCallback((paper: Paper) => removeFront(paper), [removeFront]);
 
   const undo = useCallback(() => {
     const paper = undoStack.current.pop();
@@ -104,16 +124,9 @@ export function usePaperFeed() {
     });
   }, []);
 
-  useEffect(() => { loadInitial(); }, [loadInitial]);
+  useEffect(() => {
+    loadInitial();
+  }, [loadInitial]);
 
-  return {
-    papers: queue,
-    loading,
-    error,
-    skip,
-    save,
-    maybe,
-    undo,
-    isEmpty: !loading && queue.length === 0,
-  };
+  return { papers: queue, loading, error, skip, save, maybe, undo, isEmpty: !loading && queue.length === 0 };
 }

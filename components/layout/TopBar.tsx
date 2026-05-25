@@ -34,17 +34,15 @@ export function TopBar({ onFilterClick, isGuest, unseenMatches = 0 }: TopBarProp
 
         {/* Centre: filter + match badge */}
         <div className="flex items-center gap-3">
-          {!isGuest && (
-            <button
-              onClick={onFilterClick}
-              aria-label="Open filters"
-              className="rounded-full p-2 text-white/50 transition hover:bg-white/10 hover:text-white"
-            >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2" />
-              </svg>
-            </button>
-          )}
+          <button
+            onClick={onFilterClick}
+            aria-label="Open filters"
+            className="rounded-full p-2 text-white/50 transition hover:bg-white/10 hover:text-white"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2" />
+            </svg>
+          </button>
           {unseenMatches > 0 && (
             <div className="flex items-center gap-1.5 rounded-full border border-[#ff3b7f]/30 bg-[#ff3b7f]/10 px-2.5 py-1">
               <span className="text-xs">💞</span>

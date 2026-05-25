@@ -21,20 +21,20 @@ export function FeedShell({ children, isGuest }: Props) {
         <TopBar
           isGuest={isGuest}
           unseenMatches={isGuest ? 0 : unseenCount}
-          onFilterClick={isGuest ? undefined : () => setSettingsOpen(true)}
+          onFilterClick={() => setSettingsOpen(true)}
         />
         <main className="flex flex-1 flex-col overflow-hidden pt-14">
           {children}
         </main>
-        {!isGuest && (
-          <SettingsPanel
-            open={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
-            onSettingsSaved={() => {
-              sessionStorage.removeItem("paperswipe_feed_cache");
-            }}
-          />
-        )}
+        <SettingsPanel
+          open={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          isGuest={isGuest}
+          onSettingsSaved={() => {
+            sessionStorage.removeItem("paperswipe_feed_cache");
+            if (isGuest) window.location.reload();
+          }}
+        />
       </div>
     </MatchContext.Provider>
   );

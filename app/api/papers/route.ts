@@ -10,8 +10,9 @@ import type { FeedFilters } from "@/lib/openalex";
 
 const DEFAULT_FILTERS: FeedFilters = { keywords: [], dateRange: "month", venues: [] };
 
-export async function GET() {
+export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
+  const { searchParams } = new URL(req.url);
 
   let filters: FeedFilters = DEFAULT_FILTERS;
   let seenIds = new Set<string>();
@@ -32,6 +33,14 @@ export async function GET() {
     };
 
     seenIds = new Set(seenRows.map((r) => r.openAlexId));
+  } else {
+    // Guest: read filters from query params
+    const keywords = searchParams.getAll("keyword").filter(Boolean);
+    const dateRange = searchParams.get("dateRange") ?? "month";
+    const venues = searchParams.getAll("venue").filter(Boolean);
+    if (keywords.length || venues.length || dateRange !== "month") {
+      filters = { keywords, dateRange, venues };
+    }
   }
 
   let results: ReturnType<typeof normalise>[] = [];

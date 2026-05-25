@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ZoteroCollection } from "@/hooks/useZotero";
+import { GUEST_FILTERS_KEY } from "@/hooks/usePaperFeed";
 
 interface UserSettings {
   orcid: string | null;
@@ -19,6 +20,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSettingsSaved: () => void;
+  isGuest?: boolean;
 }
 
 const DATE_RANGE_OPTIONS = [
@@ -28,7 +30,7 @@ const DATE_RANGE_OPTIONS = [
   { value: "year", label: "Past year" },
 ];
 
-export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
+export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false }: Props) {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [orcid, setOrcid] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -49,6 +51,20 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
   // Load current settings when panel opens
   useEffect(() => {
     if (!open) return;
+
+    if (isGuest) {
+      try {
+        const raw = sessionStorage.getItem(GUEST_FILTERS_KEY);
+        if (raw) {
+          const f = JSON.parse(raw);
+          setFilterKeywords(f.keywords ?? []);
+          setFilterDateRange(f.dateRange ?? "month");
+          setFilterVenues(f.venues ?? []);
+        }
+      } catch {}
+      return;
+    }
+
     fetch("/api/user/settings")
       .then((r) => r.json())
       .then(({ settings: s }: { settings: UserSettings | null }) => {
@@ -62,7 +78,7 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
         setFilterDateRange(s.filterDateRange ?? "month");
         setFilterVenues(s.filterVenues ?? []);
       });
-  }, [open]);
+  }, [open, isGuest]);
 
   const validateAndFetchCollections = useCallback(async () => {
     if (!apiKey.trim() || !userId.trim()) {
@@ -94,6 +110,18 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
+      if (isGuest) {
+        sessionStorage.setItem(
+          GUEST_FILTERS_KEY,
+          JSON.stringify({ keywords: filterKeywords, dateRange: filterDateRange, venues: filterVenues })
+        );
+        sessionStorage.removeItem("paperswipe_feed_cache");
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+        onSettingsSaved();
+        return;
+      }
+
       const body: Record<string, unknown> = {
         orcid: orcid.trim() || undefined,
         zoteroUserId: userId || undefined,
@@ -116,7 +144,7 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
     } finally {
       setSaving(false);
     }
-  }, [userId, saveCollection, maybeCollection, filterKeywords, filterDateRange, filterVenues, apiKey, onSettingsSaved]);
+  }, [isGuest, userId, saveCollection, maybeCollection, filterKeywords, filterDateRange, filterVenues, apiKey, orcid, onSettingsSaved]);
 
   const addTag = (value: string, list: string[], setList: (v: string[]) => void, setInput: (v: string) => void) => {
     const trimmed = value.trim();
@@ -163,28 +191,40 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
 
             <div className="flex-1 overflow-y-auto px-5 pb-10 space-y-8">
 
-              {/* ── ORCID section ── */}
-              <section>
-                <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
-                  Your ORCID
-                </h3>
-                <p className="mb-3 text-xs text-white/40">
-                  Required to match with researchers who read your papers.{" "}
-                  <a href="https://orcid.org" target="_blank" rel="noopener noreferrer" className="text-[#ff3b7f] hover:underline">
-                    Get your ORCID →
-                  </a>
-                </p>
-                <input
-                  type="text"
-                  value={orcid}
-                  onChange={(e) => setOrcid(e.target.value)}
-                  placeholder="0000-0001-2345-6789"
-                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 font-mono outline-none focus:border-white/25"
-                />
-              </section>
+              {/* ── Guest sign-in nudge ── */}
+              {isGuest && (
+                <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-center">
+                  <p className="text-xs text-white/40">
+                    <a href="/api/auth/signin" className="font-semibold text-[#ff3b7f] hover:underline">Sign in</a>
+                    {" "}to save papers to Zotero, get researcher matches, and sync your preferences across devices.
+                  </p>
+                </div>
+              )}
 
-              {/* ── Zotero section ── */}
-              <section>
+              {/* ── ORCID section (signed-in only) ── */}
+              {!isGuest && (
+                <section>
+                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
+                    Your ORCID
+                  </h3>
+                  <p className="mb-3 text-xs text-white/40">
+                    Required to match with researchers who read your papers.{" "}
+                    <a href="https://orcid.org" target="_blank" rel="noopener noreferrer" className="text-[#ff3b7f] hover:underline">
+                      Get your ORCID →
+                    </a>
+                  </p>
+                  <input
+                    type="text"
+                    value={orcid}
+                    onChange={(e) => setOrcid(e.target.value)}
+                    placeholder="0000-0001-2345-6789"
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 font-mono outline-none focus:border-white/25"
+                  />
+                </section>
+              )}
+
+              {/* ── Zotero section (signed-in only) ── */}
+              {!isGuest && (<section>
                 <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
                   Zotero
                 </h3>
@@ -284,7 +324,7 @@ export function SettingsPanel({ open, onClose, onSettingsSaved }: Props) {
                     </>
                   )}
                 </div>
-              </section>
+              </section>)}
 
               {/* ── Filters section ── */}
               <section>
