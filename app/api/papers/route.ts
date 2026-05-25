@@ -6,12 +6,14 @@ import { buildOpenAlexUrl, reconstructAbstract, OpenAlexResponse } from "@/lib/o
 
 const UA = "PaperSwipe/2.0 (mailto:contact@paperswipe.app)";
 
-const DEFAULT_FILTERS = { keywords: [], dateRange: "month", venues: [] };
+import type { FeedFilters } from "@/lib/openalex";
+
+const DEFAULT_FILTERS: FeedFilters = { keywords: [], dateRange: "month", venues: [] };
 
 export async function GET() {
   const session = await getServerSession(authOptions);
 
-  let filters = DEFAULT_FILTERS;
+  let filters: FeedFilters = DEFAULT_FILTERS;
   let seenIds = new Set<string>();
 
   if (session?.user?.id) {
