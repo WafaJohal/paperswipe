@@ -25,8 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   user settings.
 - `/api/openalex/sources` proxy route — server-side proxy to OpenAlex sources
   search, keeping the User-Agent header server-side.
-- Vitest + `@vitest/coverage-v8` added as dev dependencies; 23 unit tests covering
-  `buildOpenAlexUrl` and `reconstructAbstract`.
+- Vitest + `@vitest/coverage-v8` added as dev dependencies; 25 unit tests covering
+  `buildOpenAlexUrl` (including date-range week/quarter paths) and `reconstructAbstract`.
 - Deno-runnable test file (`__tests__/lib/openalex.deno_test.ts`) as CI fallback.
 - GitHub Actions CI workflow (`.github/workflows/ci.yml`).
 - Prettier, ESLint-prettier integration, husky + lint-staged pre-commit hooks.

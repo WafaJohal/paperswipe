@@ -25,8 +25,8 @@
   - `README.md`, `CHANGELOG.md`, `BACKLOG.md`, `ASSUMPTIONS.md` — living docs
   - `docs/adr/adr-001-venue-source-ids.md`, `docs/cycles/cycle-001.md` — ADR + cycle record
 
-- **Tests added:** 23 unit tests for `buildOpenAlexUrl` (filter combinations, encoding,
-  no display_name usage, pipe OR, OA, work type) and `reconstructAbstract`.
+- **Tests added:** 25 unit tests for `buildOpenAlexUrl` (filter combinations, encoding,
+  no display_name usage, pipe OR, OA, work type, week/quarter date ranges) and `reconstructAbstract`.
 
 ## Assumptions added
 
@@ -40,10 +40,9 @@
 
 ## Test & coverage results
 
-- **Tests:** 23/23 passed (Deno runner)
-- **Coverage:** N/A — vitest install blocked by npm segfault on this machine;
-  tests confirmed passing via Deno. CI (`ci.yml`) will report coverage once npm is working.
-- **Lint / format:** ESLint passes (`next lint`); Prettier config added.
+- **Tests:** 25/25 passed (Deno runner locally; Vitest + CI confirmed)
+- **Coverage:** ✅ All thresholds met (≥ 80% lines / branches / functions / statements on `lib/openalex.ts`)
+- **Lint / format:** ESLint passes (`next lint`); Prettier formatting clean.
 - **Typecheck:** TypeScript compilation clean.
 
 ## Notes
@@ -59,5 +58,6 @@
 
 ## PR
 
-- Link: (see PR created in this session)
-- Merge status: pending user
+- Link: https://github.com/WafaJohal/paperswipe/pull/1
+- Merge commit: `89a9c89` → merged into `main` on 2026-06-02
+- Merge status: ✅ merged — v2.1.0 shipped to production
