@@ -10,7 +10,10 @@ const PREFETCH_THRESHOLD = 5;
 export interface GuestFilters {
   keywords: string[];
   dateRange: string;
-  venues: string[];
+  /** Venues as { name, id } objects — id is the OpenAlex source entity ID. */
+  venues: { name: string; id: string }[];
+  workType: "" | "article" | "review" | "preprint";
+  openAccessOnly: boolean;
 }
 
 function readGuestFilters(): GuestFilters | null {
@@ -27,7 +30,10 @@ function buildPapersUrl(): string {
   if (!filters) return "/api/papers";
   const params = new URLSearchParams({ dateRange: filters.dateRange });
   filters.keywords.forEach((k) => params.append("keyword", k));
-  filters.venues.forEach((v) => params.append("venue", v));
+  // Encode each venue as "NAME|ID" so the API can split it back apart
+  filters.venues.forEach((v) => params.append("venue", `${v.name}|${v.id}`));
+  if (filters.workType) params.set("workType", filters.workType);
+  if (filters.openAccessOnly) params.set("openAccessOnly", "true");
   return `/api/papers?${params}`;
 }
 

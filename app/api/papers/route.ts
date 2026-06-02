@@ -6,9 +6,15 @@ import { buildOpenAlexUrl, reconstructAbstract, OpenAlexResponse } from "@/lib/o
 
 const UA = "PaperSwipe/2.0 (mailto:contact@paperswipe.app)";
 
-import type { FeedFilters } from "@/lib/openalex";
+import type { FeedFilters, VenueFilter } from "@/lib/openalex";
 
-const DEFAULT_FILTERS: FeedFilters = { keywords: [], dateRange: "month", venues: [] };
+const DEFAULT_FILTERS: FeedFilters = {
+  keywords: [],
+  dateRange: "month",
+  venues: [],
+  workType: "",
+  openAccessOnly: false,
+};
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -29,7 +35,14 @@ export async function GET(req: Request) {
     filters = {
       keywords: (settings?.filterKeywords as string[]) ?? [],
       dateRange: settings?.filterDateRange ?? "month",
-      venues: (settings?.filterVenues as string[]) ?? [],
+      venues: (settings?.filterVenues as VenueFilter[]) ?? [],
+      workType:
+        ((settings as unknown as Record<string, unknown>)
+          ?.filterWorkType as FeedFilters["workType"]) ?? "",
+      openAccessOnly:
+        Boolean(
+          (settings as unknown as Record<string, unknown>)?.filterOpenAccessOnly
+        ) ?? false,
     };
 
     seenIds = new Set(seenRows.map((r) => r.openAlexId));
@@ -37,9 +50,18 @@ export async function GET(req: Request) {
     // Guest: read filters from query params
     const keywords = searchParams.getAll("keyword").filter(Boolean);
     const dateRange = searchParams.get("dateRange") ?? "month";
-    const venues = searchParams.getAll("venue").filter(Boolean);
-    if (keywords.length || venues.length || dateRange !== "month") {
-      filters = { keywords, dateRange, venues };
+    // Venues are passed as "venueId:NAME|ID" pairs
+    const venueParams = searchParams.getAll("venue").filter(Boolean);
+    const venues: VenueFilter[] = venueParams.map((v) => {
+      const sep = v.indexOf("|");
+      return sep > -1
+        ? { name: v.slice(0, sep), id: v.slice(sep + 1) }
+        : { name: v, id: v };
+    });
+    const workType = (searchParams.get("workType") ?? "") as FeedFilters["workType"];
+    const openAccessOnly = searchParams.get("openAccessOnly") === "true";
+    if (keywords.length || venues.length || dateRange !== "month" || workType || openAccessOnly) {
+      filters = { keywords, dateRange, venues, workType, openAccessOnly };
     }
   }
 

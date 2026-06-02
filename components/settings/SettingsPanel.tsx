@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ZoteroCollection } from "@/hooks/useZotero";
 import { GUEST_FILTERS_KEY } from "@/hooks/usePaperFeed";
+import type { WorkType } from "@/lib/openalex";
+
+interface VenueOption {
+  id: string;
+  name: string;
+  issn: string | null;
+  type: string;
+}
 
 interface UserSettings {
   orcid: string | null;
@@ -12,7 +20,9 @@ interface UserSettings {
   zoteroMaybeCollectionKey: string | null;
   filterKeywords: string[];
   filterDateRange: string;
-  filterVenues: string[];
+  filterVenues: { name: string; id: string }[];
+  filterWorkType?: WorkType;
+  filterOpenAccessOnly?: boolean;
   zoteroApiKeyMasked: string | null;
 }
 
@@ -30,6 +40,13 @@ const DATE_RANGE_OPTIONS = [
   { value: "year", label: "Past year" },
 ];
 
+const WORK_TYPE_OPTIONS: { value: WorkType; label: string }[] = [
+  { value: "", label: "All types" },
+  { value: "article", label: "Articles" },
+  { value: "review", label: "Reviews" },
+  { value: "preprint", label: "Preprints" },
+];
+
 export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false }: Props) {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [orcid, setOrcid] = useState("");
@@ -40,9 +57,14 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
   const [maybeCollection, setMaybeCollection] = useState("");
   const [filterKeywords, setFilterKeywords] = useState<string[]>([]);
   const [filterDateRange, setFilterDateRange] = useState("month");
-  const [filterVenues, setFilterVenues] = useState<string[]>([]);
+  const [filterVenues, setFilterVenues] = useState<{ name: string; id: string }[]>([]);
+  const [filterWorkType, setFilterWorkType] = useState<WorkType>("");
+  const [filterOpenAccessOnly, setFilterOpenAccessOnly] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
   const [venueInput, setVenueInput] = useState("");
+  const [venueSuggestions, setVenueSuggestions] = useState<VenueOption[]>([]);
+  const [venueLoading, setVenueLoading] = useState(false);
+  const venueDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [validating, setValidating] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -60,6 +82,8 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
           setFilterKeywords(f.keywords ?? []);
           setFilterDateRange(f.dateRange ?? "month");
           setFilterVenues(f.venues ?? []);
+          setFilterWorkType(f.workType ?? "");
+          setFilterOpenAccessOnly(f.openAccessOnly ?? false);
         }
       } catch {}
       return;
@@ -77,8 +101,43 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
         setFilterKeywords(s.filterKeywords ?? []);
         setFilterDateRange(s.filterDateRange ?? "month");
         setFilterVenues(s.filterVenues ?? []);
+        setFilterWorkType(s.filterWorkType ?? "");
+        setFilterOpenAccessOnly(s.filterOpenAccessOnly ?? false);
       });
   }, [open, isGuest]);
+
+  // Debounced venue search
+  const handleVenueInputChange = useCallback((value: string) => {
+    setVenueInput(value);
+    setVenueSuggestions([]);
+    if (venueDebounceRef.current) clearTimeout(venueDebounceRef.current);
+    if (value.trim().length < 2) return;
+    venueDebounceRef.current = setTimeout(async () => {
+      setVenueLoading(true);
+      try {
+        const res = await fetch(
+          `/api/openalex/sources?q=${encodeURIComponent(value.trim())}`
+        );
+        if (res.ok) {
+          const data: { sources: VenueOption[] } = await res.json();
+          setVenueSuggestions(data.sources);
+        }
+      } finally {
+        setVenueLoading(false);
+      }
+    }, 350);
+  }, []);
+
+  const selectVenue = useCallback(
+    (opt: VenueOption) => {
+      if (!filterVenues.some((v) => v.id === opt.id)) {
+        setFilterVenues((prev) => [...prev, { name: opt.name, id: opt.id }]);
+      }
+      setVenueInput("");
+      setVenueSuggestions([]);
+    },
+    [filterVenues]
+  );
 
   const validateAndFetchCollections = useCallback(async () => {
     if (!apiKey.trim() || !userId.trim()) {
@@ -113,7 +172,13 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
       if (isGuest) {
         sessionStorage.setItem(
           GUEST_FILTERS_KEY,
-          JSON.stringify({ keywords: filterKeywords, dateRange: filterDateRange, venues: filterVenues })
+          JSON.stringify({
+            keywords: filterKeywords,
+            dateRange: filterDateRange,
+            venues: filterVenues,
+            workType: filterWorkType,
+            openAccessOnly: filterOpenAccessOnly,
+          })
         );
         sessionStorage.removeItem("paperswipe_feed_cache");
         setSaved(true);
@@ -130,6 +195,8 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
         filterKeywords,
         filterDateRange,
         filterVenues,
+        filterWorkType,
+        filterOpenAccessOnly,
       };
       if (apiKey.trim()) body.zoteroApiKey = apiKey.trim();
 
@@ -144,7 +211,7 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
     } finally {
       setSaving(false);
     }
-  }, [isGuest, userId, saveCollection, maybeCollection, filterKeywords, filterDateRange, filterVenues, apiKey, orcid, onSettingsSaved]);
+  }, [isGuest, userId, saveCollection, maybeCollection, filterKeywords, filterDateRange, filterVenues, filterWorkType, filterOpenAccessOnly, apiKey, orcid, onSettingsSaved]);
 
   const addTag = (value: string, list: string[], setList: (v: string[]) => void, setInput: (v: string) => void) => {
     const trimmed = value.trim();
@@ -396,45 +463,118 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
                     )}
                   </div>
 
-                  {/* Venues */}
+                  {/* Venues — autocomplete against OpenAlex /sources */}
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-white/60">
                       Journals / venues
                     </label>
-                    <div className="flex gap-2">
+                    <p className="mb-2 text-xs text-white/30">
+                      Search by name — select from suggestions to add.
+                    </p>
+                    <div className="relative">
                       <input
                         type="text"
                         value={venueInput}
-                        onChange={(e) => setVenueInput(e.target.value)}
+                        onChange={(e) => handleVenueInputChange(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === ",") {
-                            e.preventDefault();
-                            addTag(venueInput, filterVenues, setFilterVenues, setVenueInput);
+                          if (e.key === "Escape") {
+                            setVenueInput("");
+                            setVenueSuggestions([]);
                           }
                         }}
-                        placeholder="e.g. Nature"
-                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
+                        placeholder="e.g. Nature, PLOS ONE…"
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
                       />
-                      <button
-                        onClick={() => addTag(venueInput, filterVenues, setFilterVenues, setVenueInput)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white hover:bg-white/10 transition"
-                      >
-                        Add
-                      </button>
+                      {venueLoading && (
+                        <span className="absolute right-3 top-2.5 text-xs text-white/30">
+                          …
+                        </span>
+                      )}
+                      {venueSuggestions.length > 0 && (
+                        <ul className="absolute z-10 mt-1 w-full rounded-xl border border-white/10 bg-[#1c1c1c] py-1 shadow-xl">
+                          {venueSuggestions.map((opt) => (
+                            <li key={opt.id}>
+                              <button
+                                onClick={() => selectVenue(opt)}
+                                className="flex w-full flex-col px-3 py-2 text-left hover:bg-white/5"
+                              >
+                                <span className="text-sm text-white">{opt.name}</span>
+                                <span className="text-xs text-white/30">
+                                  {opt.type}
+                                  {opt.issn ? ` · ISSN ${opt.issn}` : ""}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                     {filterVenues.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {filterVenues.map((v) => (
                           <span
-                            key={v}
+                            key={v.id}
                             className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white/70"
                           >
-                            {v}
-                            <button onClick={() => removeTag(v, filterVenues, setFilterVenues)} className="text-white/40 hover:text-white">×</button>
+                            {v.name}
+                            <button
+                              onClick={() =>
+                                setFilterVenues((prev) =>
+                                  prev.filter((x) => x.id !== v.id)
+                                )
+                              }
+                              className="text-white/40 hover:text-white"
+                            >
+                              ×
+                            </button>
                           </span>
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  {/* Work type */}
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-white/60">
+                      Work type
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {WORK_TYPE_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setFilterWorkType(opt.value)}
+                          className={`rounded-xl border py-2.5 text-sm font-medium transition ${
+                            filterWorkType === opt.value
+                              ? "border-[#ff3b7f]/50 bg-[#ff3b7f]/10 text-[#ff3b7f]"
+                              : "border-white/10 bg-white/5 text-white/50 hover:bg-white/10"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Open access toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white/80">Open access only</p>
+                      <p className="text-xs text-white/30">Show only freely available papers</p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={filterOpenAccessOnly}
+                      onClick={() => setFilterOpenAccessOnly((v) => !v)}
+                      className={`relative h-6 w-11 rounded-full transition-colors ${
+                        filterOpenAccessOnly ? "bg-[#ff3b7f]" : "bg-white/10"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          filterOpenAccessOnly ? "translate-x-5" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
               </section>
