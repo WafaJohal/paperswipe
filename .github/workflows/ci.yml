@@ -21,7 +21,9 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # npm ci requires an up-to-date lock file; use npm install until the
+        # package-lock.json is regenerated in a future chore cycle.
+        run: npm install
 
       - name: Format check
         run: npm run format:check

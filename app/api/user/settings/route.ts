@@ -20,8 +20,8 @@ const UpdateSettingsSchema = z.object({
   filterKeywords: z.array(z.string()).optional(),
   filterDateRange: z.enum(["week", "month", "quarter", "year"]).optional(),
   filterVenues: z.array(VenueFilterSchema).optional(),
-  filterWorkType: z.enum(["article", "review", "preprint", ""]).optional(),
-  filterOpenAccessOnly: z.boolean().optional(),
+  // filterWorkType and filterOpenAccessOnly have no DB columns yet.
+  // They are stored in sessionStorage client-side and passed as query params.
 });
 
 export async function GET() {

@@ -32,17 +32,18 @@ export async function GET(req: Request) {
       }),
     ]);
 
+    // keywords / dateRange / venues come from DB settings
+    // workType and openAccessOnly have no DB column yet — read from query params
+    // so the client-side session overrides always apply, even for auth users.
+    const dbWorkType = (searchParams.get("workType") ?? "") as FeedFilters["workType"];
+    const dbOAOnly = searchParams.get("openAccessOnly") === "true";
+
     filters = {
       keywords: (settings?.filterKeywords as string[]) ?? [],
       dateRange: settings?.filterDateRange ?? "month",
       venues: (settings?.filterVenues as VenueFilter[]) ?? [],
-      workType:
-        ((settings as unknown as Record<string, unknown>)
-          ?.filterWorkType as FeedFilters["workType"]) ?? "",
-      openAccessOnly:
-        Boolean(
-          (settings as unknown as Record<string, unknown>)?.filterOpenAccessOnly
-        ) ?? false,
+      workType: dbWorkType,
+      openAccessOnly: dbOAOnly,
     };
 
     seenIds = new Set(seenRows.map((r) => r.openAlexId));
@@ -60,7 +61,13 @@ export async function GET(req: Request) {
     });
     const workType = (searchParams.get("workType") ?? "") as FeedFilters["workType"];
     const openAccessOnly = searchParams.get("openAccessOnly") === "true";
-    if (keywords.length || venues.length || dateRange !== "month" || workType || openAccessOnly) {
+    if (
+      keywords.length ||
+      venues.length ||
+      dateRange !== "month" ||
+      workType ||
+      openAccessOnly
+    ) {
       filters = { keywords, dateRange, venues, workType, openAccessOnly };
     }
   }

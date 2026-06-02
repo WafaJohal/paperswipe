@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ZoteroCollection } from "@/hooks/useZotero";
-import { GUEST_FILTERS_KEY } from "@/hooks/usePaperFeed";
+import { GUEST_FILTERS_KEY, WORK_OVERRIDES_KEY } from "@/hooks/usePaperFeed";
 import type { WorkType } from "@/lib/openalex";
 
 interface VenueOption {
@@ -20,9 +20,10 @@ interface UserSettings {
   zoteroMaybeCollectionKey: string | null;
   filterKeywords: string[];
   filterDateRange: string;
+  /** Venues stored as { name, id } — id is the OpenAlex source entity ID. */
   filterVenues: { name: string; id: string }[];
-  filterWorkType?: WorkType;
-  filterOpenAccessOnly?: boolean;
+  // filterWorkType and filterOpenAccessOnly are NOT in the DB.
+  // They live in sessionStorage via WORK_OVERRIDES_KEY.
   zoteroApiKeyMasked: string | null;
 }
 
@@ -82,13 +83,21 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
           setFilterKeywords(f.keywords ?? []);
           setFilterDateRange(f.dateRange ?? "month");
           setFilterVenues(f.venues ?? []);
-          setFilterWorkType(f.workType ?? "");
-          setFilterOpenAccessOnly(f.openAccessOnly ?? false);
+        }
+      } catch {}
+      // workType / openAccessOnly use the shared WORK_OVERRIDES_KEY
+      try {
+        const raw = sessionStorage.getItem(WORK_OVERRIDES_KEY);
+        if (raw) {
+          const o = JSON.parse(raw);
+          setFilterWorkType(o.workType ?? "");
+          setFilterOpenAccessOnly(o.openAccessOnly ?? false);
         }
       } catch {}
       return;
     }
 
+    // Load DB-backed settings
     fetch("/api/user/settings")
       .then((r) => r.json())
       .then(({ settings: s }: { settings: UserSettings | null }) => {
@@ -101,9 +110,16 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
         setFilterKeywords(s.filterKeywords ?? []);
         setFilterDateRange(s.filterDateRange ?? "month");
         setFilterVenues(s.filterVenues ?? []);
-        setFilterWorkType(s.filterWorkType ?? "");
-        setFilterOpenAccessOnly(s.filterOpenAccessOnly ?? false);
       });
+    // Load session-only overrides (workType / openAccessOnly have no DB column yet)
+    try {
+      const raw = sessionStorage.getItem(WORK_OVERRIDES_KEY);
+      if (raw) {
+        const o = JSON.parse(raw);
+        setFilterWorkType(o.workType ?? "");
+        setFilterOpenAccessOnly(o.openAccessOnly ?? false);
+      }
+    } catch {}
   }, [open, isGuest]);
 
   // Debounced venue search
@@ -169,6 +185,12 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
+      // workType and openAccessOnly are session-only for all users (no DB column yet)
+      sessionStorage.setItem(
+        WORK_OVERRIDES_KEY,
+        JSON.stringify({ workType: filterWorkType, openAccessOnly: filterOpenAccessOnly })
+      );
+
       if (isGuest) {
         sessionStorage.setItem(
           GUEST_FILTERS_KEY,
@@ -176,8 +198,6 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
             keywords: filterKeywords,
             dateRange: filterDateRange,
             venues: filterVenues,
-            workType: filterWorkType,
-            openAccessOnly: filterOpenAccessOnly,
           })
         );
         sessionStorage.removeItem("paperswipe_feed_cache");
@@ -195,8 +215,8 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
         filterKeywords,
         filterDateRange,
         filterVenues,
-        filterWorkType,
-        filterOpenAccessOnly,
+        // filterWorkType and filterOpenAccessOnly are NOT sent to the API —
+        // they are stored in sessionStorage via WORK_OVERRIDES_KEY above.
       };
       if (apiKey.trim()) body.zoteroApiKey = apiKey.trim();
 

@@ -5,6 +5,12 @@ import type { Paper } from "@/app/api/papers/route";
 
 const SESSION_KEY = "paperswipe_feed_cache";
 export const GUEST_FILTERS_KEY = "paperswipe_guest_filters";
+/**
+ * Session-only overrides for work-type and open-access filters.
+ * Used by ALL users (guest and authenticated) because these fields have no
+ * DB column yet — they persist for the browser session only.
+ */
+export const WORK_OVERRIDES_KEY = "paperswipe_work_overrides";
 const PREFETCH_THRESHOLD = 5;
 
 export interface GuestFilters {
@@ -12,6 +18,10 @@ export interface GuestFilters {
   dateRange: string;
   /** Venues as { name, id } objects — id is the OpenAlex source entity ID. */
   venues: { name: string; id: string }[];
+}
+
+/** Session-only overrides for filters without DB columns (all users). */
+export interface WorkOverrides {
   workType: "" | "article" | "review" | "preprint";
   openAccessOnly: boolean;
 }
@@ -25,16 +35,35 @@ function readGuestFilters(): GuestFilters | null {
   }
 }
 
+function readWorkOverrides(): WorkOverrides | null {
+  try {
+    const raw = sessionStorage.getItem(WORK_OVERRIDES_KEY);
+    return raw ? (JSON.parse(raw) as WorkOverrides) : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildPapersUrl(): string {
-  const filters = readGuestFilters();
-  if (!filters) return "/api/papers";
-  const params = new URLSearchParams({ dateRange: filters.dateRange });
-  filters.keywords.forEach((k) => params.append("keyword", k));
-  // Encode each venue as "NAME|ID" so the API can split it back apart
-  filters.venues.forEach((v) => params.append("venue", `${v.name}|${v.id}`));
-  if (filters.workType) params.set("workType", filters.workType);
-  if (filters.openAccessOnly) params.set("openAccessOnly", "true");
-  return `/api/papers?${params}`;
+  const params = new URLSearchParams();
+  const guestFilters = readGuestFilters();
+
+  if (guestFilters) {
+    // Guest user: keywords / dateRange / venues come from sessionStorage
+    params.set("dateRange", guestFilters.dateRange);
+    guestFilters.keywords.forEach((k) => params.append("keyword", k));
+    // Encode each venue as "NAME|ID" so the API can split it back apart
+    guestFilters.venues.forEach((v) =>
+      params.append("venue", `${v.name}|${v.id}`)
+    );
+  }
+  // workType and openAccessOnly are session-only for ALL users
+  const overrides = readWorkOverrides();
+  if (overrides?.workType) params.set("workType", overrides.workType);
+  if (overrides?.openAccessOnly) params.set("openAccessOnly", "true");
+
+  const qs = params.toString();
+  return qs ? `/api/papers?${qs}` : "/api/papers";
 }
 
 async function fetchBatch(): Promise<Paper[]> {
