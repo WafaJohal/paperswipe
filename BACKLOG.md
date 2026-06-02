@@ -9,12 +9,13 @@ Reviewed at the end of every cycle: mark delivered items done, capture newly dis
 
 ## Next (planned)
 
-- fix: resolve npm segfault on this machine so `vitest run` can replace the Deno fallback
-- feat: persist `filterWorkType` and `filterOpenAccessOnly` in Prisma `UserSettings` schema (currently stored as loose JSON via existing `Json` fields; add typed columns)
 - feat: show active filter chips in the TopBar so users can see what's applied at a glance
 - feat: concept/topic filter using OpenAlex `topics.id` — similar autocomplete to venues
+- feat: author filter using OpenAlex `authorships.author.id` — autocomplete by author name, store stable author IDs
+- feat: persist `filterWorkType` and `filterOpenAccessOnly` in Prisma `UserSettings` schema (currently stored in sessionStorage only; add typed columns + migration)
+- chore: add Vitest coverage badge to README (requires Codecov or similar service wired into CI)
 - chore: add husky pre-commit hooks once npm install is stable (`npx husky init`)
-- chore: add Vitest coverage badge to README once CI is running
+- fix: resolve npm segfault on this machine so `vitest run` can replace the Deno fallback
 
 ## Later (ideas / unscheduled)
 
