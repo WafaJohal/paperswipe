@@ -27,6 +27,25 @@ describe("buildOpenAlexUrl", () => {
     expect(url).toContain("from_publication_date:");
   });
 
+  it("uses a date roughly 7 days ago for dateRange 'week'", () => {
+    const url = buildOpenAlexUrl({ ...BASE_FILTERS, dateRange: "week" });
+    // The date should be within the last 8 days (allow 1 day clock skew)
+    const match = url.match(/from_publication_date:(\d{4}-\d{2}-\d{2})/);
+    expect(match).not.toBeNull();
+    const delta = (Date.now() - new Date(match![1]).getTime()) / 86_400_000;
+    expect(delta).toBeGreaterThanOrEqual(6);
+    expect(delta).toBeLessThanOrEqual(8);
+  });
+
+  it("uses a date roughly 90 days ago for dateRange 'quarter'", () => {
+    const url = buildOpenAlexUrl({ ...BASE_FILTERS, dateRange: "quarter" });
+    const match = url.match(/from_publication_date:(\d{4}-\d{2}-\d{2})/);
+    expect(match).not.toBeNull();
+    const delta = (Date.now() - new Date(match![1]).getTime()) / 86_400_000;
+    expect(delta).toBeGreaterThanOrEqual(88);
+    expect(delta).toBeLessThanOrEqual(93);
+  });
+
   it("defaults to page 1", () => {
     const url = buildOpenAlexUrl(BASE_FILTERS);
     expect(url).toContain("&page=1");

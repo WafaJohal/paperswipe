@@ -22,6 +22,22 @@ Deno.test("always includes from_publication_date filter", () => {
   assert.ok(buildOpenAlexUrl(BASE).includes("from_publication_date:"));
 });
 
+Deno.test("dateRange 'week' resolves to ~7 days ago", () => {
+  const url = buildOpenAlexUrl({ ...BASE, dateRange: "week" });
+  const match = url.match(/from_publication_date:(\d{4}-\d{2}-\d{2})/);
+  assert.ok(match, "date present in URL");
+  const delta = (Date.now() - new Date(match![1]).getTime()) / 86_400_000;
+  assert.ok(delta >= 6 && delta <= 8, `delta ${delta} not in [6,8]`);
+});
+
+Deno.test("dateRange 'quarter' resolves to ~90 days ago", () => {
+  const url = buildOpenAlexUrl({ ...BASE, dateRange: "quarter" });
+  const match = url.match(/from_publication_date:(\d{4}-\d{2}-\d{2})/);
+  assert.ok(match, "date present in URL");
+  const delta = (Date.now() - new Date(match![1]).getTime()) / 86_400_000;
+  assert.ok(delta >= 88 && delta <= 93, `delta ${delta} not in [88,93]`);
+});
+
 Deno.test("defaults to page 1", () => {
   assert.ok(buildOpenAlexUrl(BASE).includes("&page=1"));
 });
