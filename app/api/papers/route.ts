@@ -41,7 +41,7 @@ export async function GET(req: Request) {
     filters = {
       keywords: (settings?.filterKeywords as string[]) ?? [],
       dateRange: settings?.filterDateRange ?? "month",
-      venues: (settings?.filterVenues as VenueFilter[]) ?? [],
+      venues: (settings?.filterVenues as unknown as VenueFilter[]) ?? [],
       workType: dbWorkType,
       openAccessOnly: dbOAOnly,
     };
@@ -87,9 +87,7 @@ export async function GET(req: Request) {
     const data: OpenAlexResponse = await res.json();
     if (data.results.length === 0) break;
 
-    const fresh = data.results
-      .filter((w) => !seenIds.has(w.id))
-      .map(normalise);
+    const fresh = data.results.filter((w) => !seenIds.has(w.id)).map(normalise);
 
     results = results.concat(fresh);
     page++;

@@ -79,7 +79,9 @@ export function AbstractSheet({ paper, onClose, onSave, onSkip }: Props) {
                   {paper.abstract}
                 </p>
               ) : (
-                <p className="text-sm text-white/30 italic mb-5">No abstract available.</p>
+                <p className="text-sm text-white/30 italic mb-5">
+                  No abstract available.
+                </p>
               )}
 
               {/* DOI link */}
@@ -91,8 +93,18 @@ export function AbstractSheet({ paper, onClose, onSave, onSkip }: Props) {
                   className="inline-flex items-center gap-1.5 text-sm font-medium text-[#ff3b7f] hover:underline mb-6"
                 >
                   View full paper
-                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
                   </svg>
                 </a>
               )}
@@ -100,15 +112,23 @@ export function AbstractSheet({ paper, onClose, onSave, onSkip }: Props) {
               {/* Actions */}
               <div className="flex gap-3">
                 <button
-                  onClick={() => { onSkip(); onClose(); }}
+                  onClick={() => {
+                    onSkip();
+                    onClose();
+                  }}
                   className="flex-1 rounded-2xl border border-white/10 bg-white/5 py-3 text-sm font-semibold text-white/70 hover:bg-white/10 transition"
                 >
                   Skip
                 </button>
                 <button
-                  onClick={() => { onSave(); onClose(); }}
+                  onClick={() => {
+                    onSave();
+                    onClose();
+                  }}
                   className="flex-1 rounded-2xl py-3 text-sm font-semibold text-white transition"
-                  style={{ background: "linear-gradient(135deg, #ff3b7f 0%, #ff7b3b 100%)" }}
+                  style={{
+                    background: "linear-gradient(135deg, #ff3b7f 0%, #ff7b3b 100%)",
+                  }}
                 >
                   Save to Zotero ♥
                 </button>

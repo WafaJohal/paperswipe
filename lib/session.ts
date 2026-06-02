@@ -5,7 +5,18 @@ import { NextResponse } from "next/server";
 export async function getRequiredUser() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
-    return { user: null, error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+    return {
+      user: null,
+      error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+    };
   }
-  return { user: session.user as { id: string; email: string; name?: string | null; image?: string | null }, error: null };
+  return {
+    user: session.user as {
+      id: string;
+      email: string;
+      name?: string | null;
+      image?: string | null;
+    },
+    error: null,
+  };
 }

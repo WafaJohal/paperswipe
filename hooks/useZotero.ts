@@ -58,7 +58,11 @@ export function useZotero() {
 
   /** Fetch the user's Zotero collections directly from the Zotero API */
   const fetchCollections = useCallback(
-    async (userId: string, apiKey: string, libraryType = "user"): Promise<ZoteroCollection[]> => {
+    async (
+      userId: string,
+      apiKey: string,
+      libraryType = "user"
+    ): Promise<ZoteroCollection[]> => {
       const path = libraryType === "group" ? `groups/${userId}` : `users/${userId}`;
       const res = await fetch(`https://api.zotero.org/${path}/collections?limit=100`, {
         headers: {
@@ -77,7 +81,13 @@ export function useZotero() {
   );
 
   const savePaper = useCallback(
-    async (paper: Paper, collectionKey: string | null | undefined, apiKey: string, userId: string, libraryType = "user") => {
+    async (
+      paper: Paper,
+      collectionKey: string | null | undefined,
+      apiKey: string,
+      userId: string,
+      libraryType = "user"
+    ) => {
       if (!collectionKey) return;
 
       const path = libraryType === "group" ? `groups/${userId}` : `users/${userId}`;
@@ -119,7 +129,13 @@ export function useZotero() {
         return;
       }
       try {
-        await savePaper(paper, session.collectionKey, session.apiKey, session.userId, session.libraryType);
+        await savePaper(
+          paper,
+          session.collectionKey,
+          session.apiKey,
+          session.userId,
+          session.libraryType
+        );
         showToast("Saved to Zotero ✓", "success");
       } catch {
         showToast("Zotero save failed — check your settings", "error");

@@ -5,7 +5,12 @@ import Image from "next/image";
 
 interface MatchData {
   matchId: string;
-  otherUser: { id: string; name: string | null; image: string | null; orcid: string | null };
+  otherUser: {
+    id: string;
+    name: string | null;
+    image: string | null;
+    orcid: string | null;
+  };
   myLikedPaper: { id: string; title: string };
   theirLikedPaper: { id: string; title: string };
 }
@@ -37,7 +42,8 @@ export function MatchOverlay({ match, myName, myImage, onDismiss }: Props) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             style={{
-              background: "linear-gradient(160deg, #0f0f0f 0%, #1a0a14 50%, #0f0f1a 100%)",
+              background:
+                "linear-gradient(160deg, #0f0f0f 0%, #1a0a14 50%, #0f0f1a 100%)",
             }}
           />
 
@@ -62,7 +68,13 @@ export function MatchOverlay({ match, myName, myImage, onDismiss }: Props) {
                 className="h-20 w-20 overflow-hidden rounded-full ring-4 ring-[#ff3b7f]/60 shadow-lg"
               >
                 {myImage ? (
-                  <Image src={myImage} alt={myName ?? "You"} width={80} height={80} className="object-cover" />
+                  <Image
+                    src={myImage}
+                    alt={myName ?? "You"}
+                    width={80}
+                    height={80}
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-white/10 text-2xl font-bold text-white">
                     {myName?.[0]?.toUpperCase() ?? "?"}
@@ -86,7 +98,13 @@ export function MatchOverlay({ match, myName, myImage, onDismiss }: Props) {
                 className="h-20 w-20 overflow-hidden rounded-full ring-4 ring-[#ff7b3b]/60 shadow-lg"
               >
                 {match.otherUser.image ? (
-                  <Image src={match.otherUser.image} alt={match.otherUser.name ?? "Researcher"} width={80} height={80} className="object-cover" />
+                  <Image
+                    src={match.otherUser.image}
+                    alt={match.otherUser.name ?? "Researcher"}
+                    width={80}
+                    height={80}
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center bg-white/10 text-2xl font-bold text-white">
                     {match.otherUser.name?.[0]?.toUpperCase() ?? "?"}
@@ -113,7 +131,11 @@ export function MatchOverlay({ match, myName, myImage, onDismiss }: Props) {
                 It&apos;s a Match!
               </h2>
               <p className="mt-1 text-sm text-white/50">
-                You and <strong className="text-white/80">{match.otherUser.name ?? "a researcher"}</strong> liked each other&apos;s work.
+                You and{" "}
+                <strong className="text-white/80">
+                  {match.otherUser.name ?? "a researcher"}
+                </strong>{" "}
+                liked each other&apos;s work.
               </p>
             </motion.div>
 
@@ -126,11 +148,15 @@ export function MatchOverlay({ match, myName, myImage, onDismiss }: Props) {
             >
               <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-left">
                 <p className="text-xs text-white/35 mb-0.5">You liked their paper</p>
-                <p className="text-sm font-medium text-white line-clamp-2">{match.myLikedPaper.title}</p>
+                <p className="text-sm font-medium text-white line-clamp-2">
+                  {match.myLikedPaper.title}
+                </p>
               </div>
               <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-left">
                 <p className="text-xs text-white/35 mb-0.5">They liked your paper</p>
-                <p className="text-sm font-medium text-white line-clamp-2">{match.theirLikedPaper.title}</p>
+                <p className="text-sm font-medium text-white line-clamp-2">
+                  {match.theirLikedPaper.title}
+                </p>
               </div>
             </motion.div>
 
@@ -147,11 +173,24 @@ export function MatchOverlay({ match, myName, myImage, onDismiss }: Props) {
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex items-center justify-center gap-2 rounded-2xl py-3.5 text-sm font-bold text-white"
-                  style={{ background: "linear-gradient(135deg, #ff3b7f 0%, #ff7b3b 100%)" }}
+                  style={{
+                    background: "linear-gradient(135deg, #ff3b7f 0%, #ff7b3b 100%)",
+                  }}
                 >
-                  View {match.otherUser.name?.split(" ")[0] ?? "their"}&apos;s ORCID profile
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  View {match.otherUser.name?.split(" ")[0] ?? "their"}&apos;s ORCID
+                  profile
+                  <svg
+                    className="h-4 w-4"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
                   </svg>
                 </a>
               )}

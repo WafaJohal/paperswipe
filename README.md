@@ -15,16 +15,16 @@ PaperSwipe is a Next.js 14 (App Router) web app that surfaces academic papers fr
 
 ## Tech stack
 
-| Layer | Choice |
-|---|---|
-| Framework | Next.js 14 App Router |
-| Database | PostgreSQL via Prisma + Vercel Postgres |
-| Auth | NextAuth v4 |
-| Paper data | OpenAlex API |
-| Reference manager | Zotero API |
-| Animations | Framer Motion |
-| Styling | Tailwind CSS |
-| Tests | Vitest (+ Deno for CI fallback) |
+| Layer             | Choice                                  |
+| ----------------- | --------------------------------------- |
+| Framework         | Next.js 14 App Router                   |
+| Database          | PostgreSQL via Prisma + Vercel Postgres |
+| Auth              | NextAuth v4                             |
+| Paper data        | OpenAlex API                            |
+| Reference manager | Zotero API                              |
+| Animations        | Framer Motion                           |
+| Styling           | Tailwind CSS                            |
+| Tests             | Vitest (+ Deno for CI fallback)         |
 
 ## Getting started
 
@@ -39,29 +39,29 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Scripts
 
-| Command | Description |
-|---|---|
-| `npm run dev` | Start development server |
-| `npm run build` | Build for production |
-| `npm run lint` | ESLint |
-| `npm run format` | Prettier (write) |
-| `npm run format:check` | Prettier (check only) |
-| `npm run typecheck` | TypeScript type-check |
-| `npm run test` | Vitest unit tests |
-| `npm run test:deno` | Run tests via Deno (no npm needed) |
-| `npm run test:coverage` | Vitest with coverage report |
+| Command                 | Description                        |
+| ----------------------- | ---------------------------------- |
+| `npm run dev`           | Start development server           |
+| `npm run build`         | Build for production               |
+| `npm run lint`          | ESLint                             |
+| `npm run format`        | Prettier (write)                   |
+| `npm run format:check`  | Prettier (check only)              |
+| `npm run typecheck`     | TypeScript type-check              |
+| `npm run test`          | Vitest unit tests                  |
+| `npm run test:deno`     | Run tests via Deno (no npm needed) |
+| `npm run test:coverage` | Vitest with coverage report        |
 
 ## Filters
 
 Filters are backed by OpenAlex's native filter parameters:
 
-| Filter | OpenAlex parameter |
-|---|---|
-| Date range | `from_publication_date` |
+| Filter          | OpenAlex parameter                                       |
+| --------------- | -------------------------------------------------------- |
+| Date range      | `from_publication_date`                                  |
 | Venue / journal | `primary_location.source.id` (resolved via autocomplete) |
-| Work type | `type:article \| review \| preprint` |
-| Open access | `open_access.is_oa:true` |
-| Keywords | `search` |
+| Work type       | `type:article \| review \| preprint`                     |
+| Open access     | `open_access.is_oa:true`                                 |
+| Keywords        | `search`                                                 |
 
 ## Coverage floor
 

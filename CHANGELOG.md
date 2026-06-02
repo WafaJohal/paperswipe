@@ -10,11 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] - 2026-05-29
 
 ### Fixed
+
 - Venue filter now uses `primary_location.source.id` (OpenAlex source entity ID)
   instead of `display_name`, which was silently returning empty results due to
   case-sensitive exact-match requirements.
 
 ### Added
+
 - Venue autocomplete in SettingsPanel: typing a journal name searches the
   OpenAlex `/sources` endpoint and lets users pick from suggestions (name + ISSN).
   Source IDs are stored so filtering is reliable.
@@ -32,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   records.
 
 ### Changed
+
 - `FeedFilters.venues` changed from `string[]` to `{ name: string; id: string }[]`.
   Existing saved venue names (old format) are silently dropped on first load;
   users must re-add venues via the new autocomplete.
@@ -42,5 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0] - 2026-05-18
 
 ### Added
+
 - Initial public release: swipe feed, Zotero integration, researcher matching,
   guest mode, seen-paper deduplication.

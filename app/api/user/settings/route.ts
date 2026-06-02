@@ -84,5 +84,7 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ settings: { ...safeSettings, zoteroApiKeyMasked: maskedKey } });
+  return NextResponse.json({
+    settings: { ...safeSettings, zoteroApiKeyMasked: maskedKey },
+  });
 }

@@ -40,10 +40,8 @@ export function CardStack({ papers, onSkip, onSave, onMaybe, onUndo }: Props) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       // Don't fire inside inputs
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement
-      ) return;
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+        return;
 
       switch (e.key) {
         case "ArrowLeft":
@@ -80,7 +78,10 @@ export function CardStack({ papers, onSkip, onSave, onMaybe, onUndo }: Props) {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Card stack area */}
       <div className="relative flex flex-1 items-start justify-center px-4 pt-4">
-        <div className="relative w-full max-w-sm" style={{ height: "min(520px, calc(100vh - 22rem))" }}>
+        <div
+          className="relative w-full max-w-sm"
+          style={{ height: "min(520px, calc(100vh - 22rem))" }}
+        >
           {visible.map((paper, index) => (
             <SwipeCard
               key={paper.id}
@@ -112,8 +113,12 @@ export function CardStack({ papers, onSkip, onSave, onMaybe, onUndo }: Props) {
       <AbstractSheet
         paper={expandedPaper}
         onClose={() => setExpandedPaper(null)}
-        onSave={() => { if (top) onSave(top); }}
-        onSkip={() => { if (top) onSkip(top); }}
+        onSave={() => {
+          if (top) onSave(top);
+        }}
+        onSkip={() => {
+          if (top) onSkip(top);
+        }}
       />
     </div>
   );

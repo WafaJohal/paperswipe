@@ -22,11 +22,11 @@ Replace free-text venue names with OpenAlex **source entity IDs** (e.g. `S137773
 
 ## Alternatives considered
 
-| Option | Reason rejected |
-|---|---|
+| Option                       | Reason rejected                                                                                                   |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
 | `display_name.search:Nature` | Case-insensitive partial match, but OR with multiple venues via `\|` is undocumented and untested. Still fragile. |
-| ISSN-based filtering | ISSNs are authoritative but require users to know them. Poor UX. |
-| Client-side post-filter | Fetch all results, then filter by name. Very wasteful for large corpora. |
+| ISSN-based filtering         | ISSNs are authoritative but require users to know them. Poor UX.                                                  |
+| Client-side post-filter      | Fetch all results, then filter by name. Very wasteful for large corpora.                                          |
 
 ## Consequences
 

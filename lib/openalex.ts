@@ -157,7 +157,7 @@ export function buildOpenAlexUrl(filters: FeedFilters, page = 1): string {
 
 /** OpenAlex source/venue as returned by the /sources endpoint. */
 export interface OpenAlexSource {
-  id: string;           // full URL, e.g. "https://openalex.org/S137773608"
+  id: string; // full URL, e.g. "https://openalex.org/S137773608"
   display_name: string;
   issn_l: string | null;
   type: string;

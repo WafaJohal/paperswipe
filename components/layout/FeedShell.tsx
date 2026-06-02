@@ -23,9 +23,7 @@ export function FeedShell({ children, isGuest }: Props) {
           unseenMatches={isGuest ? 0 : unseenCount}
           onFilterClick={() => setSettingsOpen(true)}
         />
-        <main className="flex flex-1 flex-col overflow-hidden pt-14">
-          {children}
-        </main>
+        <main className="flex flex-1 flex-col overflow-hidden pt-14">{children}</main>
         <SettingsPanel
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}

@@ -53,9 +53,7 @@ function buildPapersUrl(): string {
     params.set("dateRange", guestFilters.dateRange);
     guestFilters.keywords.forEach((k) => params.append("keyword", k));
     // Encode each venue as "NAME|ID" so the API can split it back apart
-    guestFilters.venues.forEach((v) =>
-      params.append("venue", `${v.name}|${v.id}`)
-    );
+    guestFilters.venues.forEach((v) => params.append("venue", `${v.name}|${v.id}`));
   }
   // workType and openAccessOnly are session-only for ALL users
   const overrides = readWorkOverrides();
@@ -163,5 +161,14 @@ export function usePaperFeed() {
     loadInitial();
   }, [loadInitial]);
 
-  return { papers: queue, loading, error, skip, save, maybe, undo, isEmpty: !loading && queue.length === 0 };
+  return {
+    papers: queue,
+    loading,
+    error,
+    skip,
+    save,
+    maybe,
+    undo,
+    isEmpty: !loading && queue.length === 0,
+  };
 }

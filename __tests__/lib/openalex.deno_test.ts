@@ -77,15 +77,11 @@ Deno.test("does not use display_name for venue filtering", () => {
 });
 
 Deno.test("adds type:article filter", () => {
-  assert.ok(
-    buildOpenAlexUrl({ ...BASE, workType: "article" }).includes("type:article")
-  );
+  assert.ok(buildOpenAlexUrl({ ...BASE, workType: "article" }).includes("type:article"));
 });
 
 Deno.test("adds type:review filter", () => {
-  assert.ok(
-    buildOpenAlexUrl({ ...BASE, workType: "review" }).includes("type:review")
-  );
+  assert.ok(buildOpenAlexUrl({ ...BASE, workType: "review" }).includes("type:review"));
 });
 
 Deno.test("adds type:preprint filter", () => {
@@ -100,17 +96,13 @@ Deno.test("omits type filter when workType is empty", () => {
 
 Deno.test("adds open_access.is_oa:true when openAccessOnly", () => {
   assert.ok(
-    buildOpenAlexUrl({ ...BASE, openAccessOnly: true }).includes(
-      "open_access.is_oa:true"
-    )
+    buildOpenAlexUrl({ ...BASE, openAccessOnly: true }).includes("open_access.is_oa:true")
   );
 });
 
 Deno.test("omits OA filter when openAccessOnly false", () => {
   assert.ok(
-    !buildOpenAlexUrl({ ...BASE, openAccessOnly: false }).includes(
-      "open_access.is_oa"
-    )
+    !buildOpenAlexUrl({ ...BASE, openAccessOnly: false }).includes("open_access.is_oa")
   );
 });
 
