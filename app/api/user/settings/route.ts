@@ -4,6 +4,12 @@ import { db } from "@/lib/db";
 import { encrypt, decrypt, maskApiKey } from "@/lib/crypto";
 import { getRequiredUser } from "@/lib/session";
 
+/** Venue as stored in DB — { name, id } where id is an OpenAlex source ID. */
+const VenueFilterSchema = z.object({
+  name: z.string().min(1),
+  id: z.string().min(1),
+});
+
 const UpdateSettingsSchema = z.object({
   orcid: z.string().optional(),
   zoteroApiKey: z.string().min(1).optional(),
@@ -13,7 +19,9 @@ const UpdateSettingsSchema = z.object({
   zoteroMaybeCollectionKey: z.string().optional(),
   filterKeywords: z.array(z.string()).optional(),
   filterDateRange: z.enum(["week", "month", "quarter", "year"]).optional(),
-  filterVenues: z.array(z.string()).optional(),
+  filterVenues: z.array(VenueFilterSchema).optional(),
+  // filterWorkType and filterOpenAccessOnly have no DB columns yet.
+  // They are stored in sessionStorage client-side and passed as query params.
 });
 
 export async function GET() {
@@ -76,5 +84,7 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ settings: { ...safeSettings, zoteroApiKeyMasked: maskedKey } });
+  return NextResponse.json({
+    settings: { ...safeSettings, zoteroApiKeyMasked: maskedKey },
+  });
 }

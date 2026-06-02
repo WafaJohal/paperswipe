@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "fix/**", "feat/**", "chore/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Format · Lint · Typecheck · Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        # npm ci requires an up-to-date lock file; use npm install until the
+        # package-lock.json is regenerated in a future chore cycle.
+        run: npm install
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test with coverage
+        run: npm run test:coverage
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/

@@ -16,8 +16,18 @@ export function ActionBar({ onSkip, onSave, onMaybe, onUndo }: Props) {
         aria-label="Undo"
         className="flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/40 transition hover:bg-white/10 hover:text-white/70 active:scale-95"
       >
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 14L4 9m0 0l5-5M4 9h11a6 6 0 010 12h-3" />
+        <svg
+          className="h-5 w-5"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M9 14L4 9m0 0l5-5M4 9h11a6 6 0 010 12h-3"
+          />
         </svg>
       </button>
 
@@ -27,7 +37,13 @@ export function ActionBar({ onSkip, onSave, onMaybe, onUndo }: Props) {
         aria-label="Skip"
         className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-red-500/50 bg-red-500/10 text-red-400 shadow-lg transition hover:bg-red-500/20 active:scale-95"
       >
-        <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+        <svg
+          className="h-7 w-7"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2.5}
+        >
           <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
@@ -49,7 +65,13 @@ export function ActionBar({ onSkip, onSave, onMaybe, onUndo }: Props) {
         aria-label="Maybe"
         className="flex h-16 w-16 items-center justify-center rounded-full border-2 border-yellow-500/50 bg-yellow-500/10 text-yellow-400 shadow-lg transition hover:bg-yellow-500/20 active:scale-95"
       >
-        <svg className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <svg
+          className="h-7 w-7"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+          strokeWidth={2}
+        >
           <circle cx="12" cy="12" r="9" />
           <circle cx="12" cy="12" r="3" fill="currentColor" />
         </svg>

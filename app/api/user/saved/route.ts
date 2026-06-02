@@ -62,14 +62,20 @@ type MatchResult =
   | {
       found: true;
       matchId: string;
-      otherUser: { id: string; name: string | null; image: string | null; orcid: string | null };
+      otherUser: {
+        id: string;
+        name: string | null;
+        image: string | null;
+        orcid: string | null;
+      };
       theirPaper: { id: string; title: string };
       myPaper: { id: string; title: string };
     }
   | { found: false };
 
 async function detectMatch(input: MatchInput): Promise<MatchResult> {
-  const { savingUserId, savedPaperId, savedPaperTitle, savedPaperAuthorships, myOrcid } = input;
+  const { savingUserId, savedPaperId, savedPaperTitle, savedPaperAuthorships, myOrcid } =
+    input;
 
   // Collect ORCIDs of the paper's authors (strip URL prefix)
   const authorOrcids = savedPaperAuthorships

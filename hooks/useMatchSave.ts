@@ -5,7 +5,12 @@ import type { Paper } from "@/app/api/papers/route";
 
 export interface MatchData {
   matchId: string;
-  otherUser: { id: string; name: string | null; image: string | null; orcid: string | null };
+  otherUser: {
+    id: string;
+    name: string | null;
+    image: string | null;
+    orcid: string | null;
+  };
   myLikedPaper: { id: string; title: string };
   theirLikedPaper: { id: string; title: string };
 }

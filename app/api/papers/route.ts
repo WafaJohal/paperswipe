@@ -6,9 +6,15 @@ import { buildOpenAlexUrl, reconstructAbstract, OpenAlexResponse } from "@/lib/o
 
 const UA = "PaperSwipe/2.0 (mailto:contact@paperswipe.app)";
 
-import type { FeedFilters } from "@/lib/openalex";
+import type { FeedFilters, VenueFilter } from "@/lib/openalex";
 
-const DEFAULT_FILTERS: FeedFilters = { keywords: [], dateRange: "month", venues: [] };
+const DEFAULT_FILTERS: FeedFilters = {
+  keywords: [],
+  dateRange: "month",
+  venues: [],
+  workType: "",
+  openAccessOnly: false,
+};
 
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
@@ -26,10 +32,18 @@ export async function GET(req: Request) {
       }),
     ]);
 
+    // keywords / dateRange / venues come from DB settings
+    // workType and openAccessOnly have no DB column yet — read from query params
+    // so the client-side session overrides always apply, even for auth users.
+    const dbWorkType = (searchParams.get("workType") ?? "") as FeedFilters["workType"];
+    const dbOAOnly = searchParams.get("openAccessOnly") === "true";
+
     filters = {
       keywords: (settings?.filterKeywords as string[]) ?? [],
       dateRange: settings?.filterDateRange ?? "month",
-      venues: (settings?.filterVenues as string[]) ?? [],
+      venues: (settings?.filterVenues as unknown as VenueFilter[]) ?? [],
+      workType: dbWorkType,
+      openAccessOnly: dbOAOnly,
     };
 
     seenIds = new Set(seenRows.map((r) => r.openAlexId));
@@ -37,9 +51,24 @@ export async function GET(req: Request) {
     // Guest: read filters from query params
     const keywords = searchParams.getAll("keyword").filter(Boolean);
     const dateRange = searchParams.get("dateRange") ?? "month";
-    const venues = searchParams.getAll("venue").filter(Boolean);
-    if (keywords.length || venues.length || dateRange !== "month") {
-      filters = { keywords, dateRange, venues };
+    // Venues are passed as "venueId:NAME|ID" pairs
+    const venueParams = searchParams.getAll("venue").filter(Boolean);
+    const venues: VenueFilter[] = venueParams.map((v) => {
+      const sep = v.indexOf("|");
+      return sep > -1
+        ? { name: v.slice(0, sep), id: v.slice(sep + 1) }
+        : { name: v, id: v };
+    });
+    const workType = (searchParams.get("workType") ?? "") as FeedFilters["workType"];
+    const openAccessOnly = searchParams.get("openAccessOnly") === "true";
+    if (
+      keywords.length ||
+      venues.length ||
+      dateRange !== "month" ||
+      workType ||
+      openAccessOnly
+    ) {
+      filters = { keywords, dateRange, venues, workType, openAccessOnly };
     }
   }
 
@@ -58,9 +87,7 @@ export async function GET(req: Request) {
     const data: OpenAlexResponse = await res.json();
     if (data.results.length === 0) break;
 
-    const fresh = data.results
-      .filter((w) => !seenIds.has(w.id))
-      .map(normalise);
+    const fresh = data.results.filter((w) => !seenIds.has(w.id)).map(normalise);
 
     results = results.concat(fresh);
     page++;

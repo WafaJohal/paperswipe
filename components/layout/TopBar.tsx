@@ -39,14 +39,26 @@ export function TopBar({ onFilterClick, isGuest, unseenMatches = 0 }: TopBarProp
             aria-label="Open filters"
             className="rounded-full p-2 text-white/50 transition hover:bg-white/10 hover:text-white"
           >
-            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 12h10M11 20h2" />
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 4h18M7 12h10M11 20h2"
+              />
             </svg>
           </button>
           {unseenMatches > 0 && (
             <div className="flex items-center gap-1.5 rounded-full border border-[#ff3b7f]/30 bg-[#ff3b7f]/10 px-2.5 py-1">
               <span className="text-xs">💞</span>
-              <span className="text-xs font-semibold text-[#ff3b7f]">{unseenMatches}</span>
+              <span className="text-xs font-semibold text-[#ff3b7f]">
+                {unseenMatches}
+              </span>
             </div>
           )}
         </div>
@@ -80,8 +92,18 @@ export function TopBar({ onFilterClick, isGuest, unseenMatches = 0 }: TopBarProp
               aria-label="Sign out"
               className="rounded-full p-2 text-white/40 transition hover:bg-white/10 hover:text-white"
             >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1" />
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h6a2 2 0 012 2v1"
+                />
               </svg>
             </button>
           </div>

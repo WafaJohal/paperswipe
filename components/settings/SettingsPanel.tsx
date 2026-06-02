@@ -1,9 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ZoteroCollection } from "@/hooks/useZotero";
-import { GUEST_FILTERS_KEY } from "@/hooks/usePaperFeed";
+import { GUEST_FILTERS_KEY, WORK_OVERRIDES_KEY } from "@/hooks/usePaperFeed";
+import type { WorkType } from "@/lib/openalex";
+
+interface VenueOption {
+  id: string;
+  name: string;
+  issn: string | null;
+  type: string;
+}
 
 interface UserSettings {
   orcid: string | null;
@@ -12,7 +20,10 @@ interface UserSettings {
   zoteroMaybeCollectionKey: string | null;
   filterKeywords: string[];
   filterDateRange: string;
-  filterVenues: string[];
+  /** Venues stored as { name, id } — id is the OpenAlex source entity ID. */
+  filterVenues: { name: string; id: string }[];
+  // filterWorkType and filterOpenAccessOnly are NOT in the DB.
+  // They live in sessionStorage via WORK_OVERRIDES_KEY.
   zoteroApiKeyMasked: string | null;
 }
 
@@ -30,7 +41,19 @@ const DATE_RANGE_OPTIONS = [
   { value: "year", label: "Past year" },
 ];
 
-export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false }: Props) {
+const WORK_TYPE_OPTIONS: { value: WorkType; label: string }[] = [
+  { value: "", label: "All types" },
+  { value: "article", label: "Articles" },
+  { value: "review", label: "Reviews" },
+  { value: "preprint", label: "Preprints" },
+];
+
+export function SettingsPanel({
+  open,
+  onClose,
+  onSettingsSaved,
+  isGuest = false,
+}: Props) {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [orcid, setOrcid] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -40,9 +63,14 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
   const [maybeCollection, setMaybeCollection] = useState("");
   const [filterKeywords, setFilterKeywords] = useState<string[]>([]);
   const [filterDateRange, setFilterDateRange] = useState("month");
-  const [filterVenues, setFilterVenues] = useState<string[]>([]);
+  const [filterVenues, setFilterVenues] = useState<{ name: string; id: string }[]>([]);
+  const [filterWorkType, setFilterWorkType] = useState<WorkType>("");
+  const [filterOpenAccessOnly, setFilterOpenAccessOnly] = useState(false);
   const [keywordInput, setKeywordInput] = useState("");
   const [venueInput, setVenueInput] = useState("");
+  const [venueSuggestions, setVenueSuggestions] = useState<VenueOption[]>([]);
+  const [venueLoading, setVenueLoading] = useState(false);
+  const venueDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [validating, setValidating] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -62,9 +90,19 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
           setFilterVenues(f.venues ?? []);
         }
       } catch {}
+      // workType / openAccessOnly use the shared WORK_OVERRIDES_KEY
+      try {
+        const raw = sessionStorage.getItem(WORK_OVERRIDES_KEY);
+        if (raw) {
+          const o = JSON.parse(raw);
+          setFilterWorkType(o.workType ?? "");
+          setFilterOpenAccessOnly(o.openAccessOnly ?? false);
+        }
+      } catch {}
       return;
     }
 
+    // Load DB-backed settings
     fetch("/api/user/settings")
       .then((r) => r.json())
       .then(({ settings: s }: { settings: UserSettings | null }) => {
@@ -78,7 +116,49 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
         setFilterDateRange(s.filterDateRange ?? "month");
         setFilterVenues(s.filterVenues ?? []);
       });
+    // Load session-only overrides (workType / openAccessOnly have no DB column yet)
+    try {
+      const raw = sessionStorage.getItem(WORK_OVERRIDES_KEY);
+      if (raw) {
+        const o = JSON.parse(raw);
+        setFilterWorkType(o.workType ?? "");
+        setFilterOpenAccessOnly(o.openAccessOnly ?? false);
+      }
+    } catch {}
   }, [open, isGuest]);
+
+  // Debounced venue search
+  const handleVenueInputChange = useCallback((value: string) => {
+    setVenueInput(value);
+    setVenueSuggestions([]);
+    if (venueDebounceRef.current) clearTimeout(venueDebounceRef.current);
+    if (value.trim().length < 2) return;
+    venueDebounceRef.current = setTimeout(async () => {
+      setVenueLoading(true);
+      try {
+        const res = await fetch(
+          `/api/openalex/sources?q=${encodeURIComponent(value.trim())}`
+        );
+        if (res.ok) {
+          const data: { sources: VenueOption[] } = await res.json();
+          setVenueSuggestions(data.sources);
+        }
+      } finally {
+        setVenueLoading(false);
+      }
+    }, 350);
+  }, []);
+
+  const selectVenue = useCallback(
+    (opt: VenueOption) => {
+      if (!filterVenues.some((v) => v.id === opt.id)) {
+        setFilterVenues((prev) => [...prev, { name: opt.name, id: opt.id }]);
+      }
+      setVenueInput("");
+      setVenueSuggestions([]);
+    },
+    [filterVenues]
+  );
 
   const validateAndFetchCollections = useCallback(async () => {
     if (!apiKey.trim() || !userId.trim()) {
@@ -88,12 +168,15 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
     setValidating(true);
     setValidationError("");
     try {
-      const res = await fetch(`https://api.zotero.org/users/${userId}/collections?limit=100`, {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Zotero-API-Version": "3",
-        },
-      });
+      const res = await fetch(
+        `https://api.zotero.org/users/${userId}/collections?limit=100`,
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Zotero-API-Version": "3",
+          },
+        }
+      );
       if (!res.ok) {
         setValidationError("Invalid credentials — check your User ID and API key.");
         return;
@@ -110,10 +193,20 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
+      // workType and openAccessOnly are session-only for all users (no DB column yet)
+      sessionStorage.setItem(
+        WORK_OVERRIDES_KEY,
+        JSON.stringify({ workType: filterWorkType, openAccessOnly: filterOpenAccessOnly })
+      );
+
       if (isGuest) {
         sessionStorage.setItem(
           GUEST_FILTERS_KEY,
-          JSON.stringify({ keywords: filterKeywords, dateRange: filterDateRange, venues: filterVenues })
+          JSON.stringify({
+            keywords: filterKeywords,
+            dateRange: filterDateRange,
+            venues: filterVenues,
+          })
         );
         sessionStorage.removeItem("paperswipe_feed_cache");
         setSaved(true);
@@ -130,6 +223,8 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
         filterKeywords,
         filterDateRange,
         filterVenues,
+        // filterWorkType and filterOpenAccessOnly are NOT sent to the API —
+        // they are stored in sessionStorage via WORK_OVERRIDES_KEY above.
       };
       if (apiKey.trim()) body.zoteroApiKey = apiKey.trim();
 
@@ -144,9 +239,27 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
     } finally {
       setSaving(false);
     }
-  }, [isGuest, userId, saveCollection, maybeCollection, filterKeywords, filterDateRange, filterVenues, apiKey, orcid, onSettingsSaved]);
+  }, [
+    isGuest,
+    userId,
+    saveCollection,
+    maybeCollection,
+    filterKeywords,
+    filterDateRange,
+    filterVenues,
+    filterWorkType,
+    filterOpenAccessOnly,
+    apiKey,
+    orcid,
+    onSettingsSaved,
+  ]);
 
-  const addTag = (value: string, list: string[], setList: (v: string[]) => void, setInput: (v: string) => void) => {
+  const addTag = (
+    value: string,
+    list: string[],
+    setList: (v: string[]) => void,
+    setInput: (v: string) => void
+  ) => {
     const trimmed = value.trim();
     if (trimmed && !list.includes(trimmed)) {
       setList([...list, trimmed]);
@@ -182,21 +295,39 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
             </div>
             <div className="flex shrink-0 items-center justify-between px-5 pb-4">
               <h2 className="text-lg font-bold text-white">Settings</h2>
-              <button onClick={onClose} className="rounded-full p-1 text-white/40 hover:text-white">
-                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+              <button
+                onClick={onClose}
+                className="rounded-full p-1 text-white/40 hover:text-white"
+              >
+                <svg
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 pb-10 space-y-8">
-
               {/* ── Guest sign-in nudge ── */}
               {isGuest && (
                 <div className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-center">
                   <p className="text-xs text-white/40">
-                    <a href="/api/auth/signin" className="font-semibold text-[#ff3b7f] hover:underline">Sign in</a>
-                    {" "}to save papers to Zotero, get researcher matches, and sync your preferences across devices.
+                    <a
+                      href="/api/auth/signin"
+                      className="font-semibold text-[#ff3b7f] hover:underline"
+                    >
+                      Sign in
+                    </a>{" "}
+                    to save papers to Zotero, get researcher matches, and sync your
+                    preferences across devices.
                   </p>
                 </div>
               )}
@@ -209,7 +340,12 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
                   </h3>
                   <p className="mb-3 text-xs text-white/40">
                     Required to match with researchers who read your papers.{" "}
-                    <a href="https://orcid.org" target="_blank" rel="noopener noreferrer" className="text-[#ff3b7f] hover:underline">
+                    <a
+                      href="https://orcid.org"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#ff3b7f] hover:underline"
+                    >
                       Get your ORCID →
                     </a>
                   </p>
@@ -224,107 +360,115 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
               )}
 
               {/* ── Zotero section (signed-in only) ── */}
-              {!isGuest && (<section>
-                <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
-                  Zotero
-                </h3>
-                <p className="mb-4 text-xs text-white/40">
-                  Get your API key at{" "}
-                  <a
-                    href="https://www.zotero.org/settings/keys"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[#ff3b7f] hover:underline"
-                  >
-                    zotero.org/settings/keys
-                  </a>
-                </p>
+              {!isGuest && (
+                <section>
+                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-widest text-white/40">
+                    Zotero
+                  </h3>
+                  <p className="mb-4 text-xs text-white/40">
+                    Get your API key at{" "}
+                    <a
+                      href="https://www.zotero.org/settings/keys"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#ff3b7f] hover:underline"
+                    >
+                      zotero.org/settings/keys
+                    </a>
+                  </p>
 
-                <div className="space-y-3">
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-white/60">
-                      Zotero User ID
-                    </label>
-                    <input
-                      type="text"
-                      value={userId}
-                      onChange={(e) => setUserId(e.target.value)}
-                      placeholder="e.g. 1234567"
-                      className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-white/60">
-                      API Key
-                      {settings?.zoteroApiKeyMasked && (
-                        <span className="ml-2 font-mono text-white/30">{settings.zoteroApiKeyMasked}</span>
-                      )}
-                    </label>
-                    <div className="flex gap-2">
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-white/60">
+                        Zotero User ID
+                      </label>
                       <input
-                        type="password"
-                        value={apiKey}
-                        onChange={(e) => setApiKey(e.target.value)}
-                        placeholder="Paste new key to update"
-                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
+                        type="text"
+                        value={userId}
+                        onChange={(e) => setUserId(e.target.value)}
+                        placeholder="e.g. 1234567"
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
                       />
-                      <button
-                        onClick={validateAndFetchCollections}
-                        disabled={validating}
-                        className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50 transition"
-                      >
-                        {validating ? "…" : "Validate"}
-                      </button>
                     </div>
-                    {validationError && (
-                      <p className="mt-1.5 text-xs text-red-400">{validationError}</p>
-                    )}
+
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-white/60">
+                        API Key
+                        {settings?.zoteroApiKeyMasked && (
+                          <span className="ml-2 font-mono text-white/30">
+                            {settings.zoteroApiKeyMasked}
+                          </span>
+                        )}
+                      </label>
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={apiKey}
+                          onChange={(e) => setApiKey(e.target.value)}
+                          placeholder="Paste new key to update"
+                          className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
+                        />
+                        <button
+                          onClick={validateAndFetchCollections}
+                          disabled={validating}
+                          className="shrink-0 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white hover:bg-white/10 disabled:opacity-50 transition"
+                        >
+                          {validating ? "…" : "Validate"}
+                        </button>
+                      </div>
+                      {validationError && (
+                        <p className="mt-1.5 text-xs text-red-400">{validationError}</p>
+                      )}
+                      {collections.length > 0 && (
+                        <p className="mt-1.5 text-xs text-green-400">
+                          ✓ Connected — {collections.length} collections found
+                        </p>
+                      )}
+                    </div>
+
                     {collections.length > 0 && (
-                      <p className="mt-1.5 text-xs text-green-400">
-                        ✓ Connected — {collections.length} collections found
-                      </p>
+                      <>
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-white/60">
+                            Save ♥ papers to
+                          </label>
+                          <select
+                            value={saveCollection}
+                            onChange={(e) => setSaveCollection(e.target.value)}
+                            className="w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-3 py-2.5 text-sm text-white outline-none focus:border-white/25"
+                          >
+                            <option value="">— choose collection —</option>
+                            {collections.map((c) => (
+                              <option key={c.key} value={c.key}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="mb-1.5 block text-xs font-medium text-white/60">
+                            Save ◎ Maybe papers to{" "}
+                            <span className="text-white/25">(optional)</span>
+                          </label>
+                          <select
+                            value={maybeCollection}
+                            onChange={(e) => setMaybeCollection(e.target.value)}
+                            className="w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-3 py-2.5 text-sm text-white outline-none focus:border-white/25"
+                          >
+                            <option value="">— same as ♥ collection —</option>
+                            {collections.map((c) => (
+                              <option key={c.key} value={c.key}>
+                                {c.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
                     )}
                   </div>
-
-                  {collections.length > 0 && (
-                    <>
-                      <div>
-                        <label className="mb-1.5 block text-xs font-medium text-white/60">
-                          Save ♥ papers to
-                        </label>
-                        <select
-                          value={saveCollection}
-                          onChange={(e) => setSaveCollection(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-3 py-2.5 text-sm text-white outline-none focus:border-white/25"
-                        >
-                          <option value="">— choose collection —</option>
-                          {collections.map((c) => (
-                            <option key={c.key} value={c.key}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div>
-                        <label className="mb-1.5 block text-xs font-medium text-white/60">
-                          Save ◎ Maybe papers to{" "}
-                          <span className="text-white/25">(optional)</span>
-                        </label>
-                        <select
-                          value={maybeCollection}
-                          onChange={(e) => setMaybeCollection(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-[#1a1a1a] px-3 py-2.5 text-sm text-white outline-none focus:border-white/25"
-                        >
-                          <option value="">— same as ♥ collection —</option>
-                          {collections.map((c) => (
-                            <option key={c.key} value={c.key}>{c.name}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </>
-                  )}
-                </div>
-              </section>)}
+                </section>
+              )}
 
               {/* ── Filters section ── */}
               <section>
@@ -368,14 +512,26 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === ",") {
                             e.preventDefault();
-                            addTag(keywordInput, filterKeywords, setFilterKeywords, setKeywordInput);
+                            addTag(
+                              keywordInput,
+                              filterKeywords,
+                              setFilterKeywords,
+                              setKeywordInput
+                            );
                           }
                         }}
                         placeholder="e.g. Human-Robot Interaction"
                         className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
                       />
                       <button
-                        onClick={() => addTag(keywordInput, filterKeywords, setFilterKeywords, setKeywordInput)}
+                        onClick={() =>
+                          addTag(
+                            keywordInput,
+                            filterKeywords,
+                            setFilterKeywords,
+                            setKeywordInput
+                          )
+                        }
                         className="rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white hover:bg-white/10 transition"
                       >
                         Add
@@ -389,52 +545,136 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
                             className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white/70"
                           >
                             {kw}
-                            <button onClick={() => removeTag(kw, filterKeywords, setFilterKeywords)} className="text-white/40 hover:text-white">×</button>
+                            <button
+                              onClick={() =>
+                                removeTag(kw, filterKeywords, setFilterKeywords)
+                              }
+                              className="text-white/40 hover:text-white"
+                            >
+                              ×
+                            </button>
                           </span>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  {/* Venues */}
+                  {/* Venues — autocomplete against OpenAlex /sources */}
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-white/60">
                       Journals / venues
                     </label>
-                    <div className="flex gap-2">
+                    <p className="mb-2 text-xs text-white/30">
+                      Search by name — select from suggestions to add.
+                    </p>
+                    <div className="relative">
                       <input
                         type="text"
                         value={venueInput}
-                        onChange={(e) => setVenueInput(e.target.value)}
+                        onChange={(e) => handleVenueInputChange(e.target.value)}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === ",") {
-                            e.preventDefault();
-                            addTag(venueInput, filterVenues, setFilterVenues, setVenueInput);
+                          if (e.key === "Escape") {
+                            setVenueInput("");
+                            setVenueSuggestions([]);
                           }
                         }}
-                        placeholder="e.g. Nature"
-                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
+                        placeholder="e.g. Nature, PLOS ONE…"
+                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder-white/25 outline-none focus:border-white/25"
                       />
-                      <button
-                        onClick={() => addTag(venueInput, filterVenues, setFilterVenues, setVenueInput)}
-                        className="rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white hover:bg-white/10 transition"
-                      >
-                        Add
-                      </button>
+                      {venueLoading && (
+                        <span className="absolute right-3 top-2.5 text-xs text-white/30">
+                          …
+                        </span>
+                      )}
+                      {venueSuggestions.length > 0 && (
+                        <ul className="absolute z-10 mt-1 w-full rounded-xl border border-white/10 bg-[#1c1c1c] py-1 shadow-xl">
+                          {venueSuggestions.map((opt) => (
+                            <li key={opt.id}>
+                              <button
+                                onClick={() => selectVenue(opt)}
+                                className="flex w-full flex-col px-3 py-2 text-left hover:bg-white/5"
+                              >
+                                <span className="text-sm text-white">{opt.name}</span>
+                                <span className="text-xs text-white/30">
+                                  {opt.type}
+                                  {opt.issn ? ` · ISSN ${opt.issn}` : ""}
+                                </span>
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
                     {filterVenues.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1.5">
                         {filterVenues.map((v) => (
                           <span
-                            key={v}
+                            key={v.id}
                             className="flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-0.5 text-xs text-white/70"
                           >
-                            {v}
-                            <button onClick={() => removeTag(v, filterVenues, setFilterVenues)} className="text-white/40 hover:text-white">×</button>
+                            {v.name}
+                            <button
+                              onClick={() =>
+                                setFilterVenues((prev) =>
+                                  prev.filter((x) => x.id !== v.id)
+                                )
+                              }
+                              className="text-white/40 hover:text-white"
+                            >
+                              ×
+                            </button>
                           </span>
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  {/* Work type */}
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-white/60">
+                      Work type
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {WORK_TYPE_OPTIONS.map((opt) => (
+                        <button
+                          key={opt.value}
+                          onClick={() => setFilterWorkType(opt.value)}
+                          className={`rounded-xl border py-2.5 text-sm font-medium transition ${
+                            filterWorkType === opt.value
+                              ? "border-[#ff3b7f]/50 bg-[#ff3b7f]/10 text-[#ff3b7f]"
+                              : "border-white/10 bg-white/5 text-white/50 hover:bg-white/10"
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Open access toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white/80">
+                        Open access only
+                      </p>
+                      <p className="text-xs text-white/30">
+                        Show only freely available papers
+                      </p>
+                    </div>
+                    <button
+                      role="switch"
+                      aria-checked={filterOpenAccessOnly}
+                      onClick={() => setFilterOpenAccessOnly((v) => !v)}
+                      className={`relative h-6 w-11 rounded-full transition-colors ${
+                        filterOpenAccessOnly ? "bg-[#ff3b7f]" : "bg-white/10"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                          filterOpenAccessOnly ? "translate-x-5" : "translate-x-0.5"
+                        }`}
+                      />
+                    </button>
                   </div>
                 </div>
               </section>
@@ -446,7 +686,9 @@ export function SettingsPanel({ open, onClose, onSettingsSaved, isGuest = false 
                 onClick={handleSave}
                 disabled={saving}
                 className="w-full rounded-2xl py-3.5 text-sm font-bold text-white transition disabled:opacity-60"
-                style={{ background: "linear-gradient(135deg, #ff3b7f 0%, #ff7b3b 100%)" }}
+                style={{
+                  background: "linear-gradient(135deg, #ff3b7f 0%, #ff7b3b 100%)",
+                }}
               >
                 {saved ? "Saved ✓" : saving ? "Saving…" : "Save settings"}
               </button>

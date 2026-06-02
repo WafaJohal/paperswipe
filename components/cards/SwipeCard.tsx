@@ -27,7 +27,7 @@ const EXIT_X = 700;
 const STACK = [
   { scale: 1, y: 0 },
   { scale: 0.95, y: 12 },
-  { scale: 0.90, y: 24 },
+  { scale: 0.9, y: 24 },
 ] as const;
 
 const exitEase: [number, number, number, number] = [0.32, 0, 0.67, 0];
