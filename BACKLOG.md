@@ -9,6 +9,8 @@ Reviewed at the end of every cycle: mark delivered items done, capture newly dis
 
 ## Next (planned)
 
+- fix: GitHub sign-in broken — OAuth flow does not complete successfully; investigate provider config and callback handling
+- feat: reorganise UI menus — user config (Zotero, ORCID, login/account) consolidated into a single user menu; filters moved to a separate filters menu (keep filters centred for now)
 - feat: show active filter chips in the TopBar so users can see what's applied at a glance
 - feat: concept/topic filter using OpenAlex `topics.id` — similar autocomplete to venues
 - feat: author filter using OpenAlex `authorships.author.id` — autocomplete by author name, store stable author IDs
@@ -19,6 +21,8 @@ Reviewed at the end of every cycle: mark delivered items done, capture newly dis
 
 ## Later (ideas / unscheduled)
 
+- feat: reader match — detect when two users have significant overlap in bookmarked papers using Jaccard similarity; surface a match card and propose they discuss a shared paper
+- feat: author match — detect mutual bookmarking between a reader and an author (reader has saved author's papers AND that author has saved the reader's papers); surface this as a special "author match" connection
 - feat: "For you" sort mode — personalised ranking based on saved-paper concepts
 - feat: share a paper card as an image (Open Graph card generation)
 - feat: email digest of saved papers weekly
